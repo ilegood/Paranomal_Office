@@ -76,7 +76,8 @@
       aimWorld = null,
       testHazard = null,
       enemySystem = null,
-      playerDamageSystem = null
+      playerDamageSystem = null,
+      itemSystem = null
     ) {
       const ctx = this.ctx;
       ctx.save();
@@ -88,14 +89,17 @@
       // 2. 북쪽(뒷면) 벽면 및 좌/우 외벽
       this._drawBackAndSideWalls(ctx, officeMap);
 
-      // 3. 임시 무적 테스트 위험 구역, 적 감지/공격 예고 표시, 바닥 그림자 및 조준 방향 표시
+      // 3. 임시 무적 테스트 위험 구역, 아이템 바닥 표시, 적 감지/공격 예고 표시, 바닥 그림자 및 조준 방향 표시
       if (testHazard) {
         testHazard.renderFloor(ctx);
+      }
+      if (itemSystem) {
+        this._drawItemFloorIndicators(ctx, itemSystem);
       }
       if (enemySystem) {
         this._drawEnemyFloorIndicators(ctx, enemySystem);
       }
-      this._drawShadows(ctx, officeMap, player, combat, enemySystem);
+      this._drawShadows(ctx, officeMap, player, combat, enemySystem, itemSystem);
       if (!player.isDead) {
         this._drawPlayerDirectionIndicator(ctx, player);
       }
@@ -110,6 +114,19 @@
           sortY: obs.y + obs.height,
           data: obs
         });
+      }
+
+      if (itemSystem) {
+        const activeItems = itemSystem.getActiveItems();
+        for (let i = 0; i < activeItems.length; i++) {
+          const worldItem = activeItems[i];
+          renderQueue.push({
+            kind: 'item',
+            sortY: worldItem.getSortY(),
+            data: worldItem,
+            isFocused: itemSystem.focusedItem === worldItem
+          });
+        }
       }
 
       // 대시 잔상도 Y-정렬 큐에 포함하여 책상/기둥 전후 원근 유지
@@ -181,6 +198,9 @@
           case 'obstacle':
             this._drawObstacle(ctx, item.data);
             break;
+          case 'item':
+            this._drawWorldItem(ctx, item.data, item.isFocused);
+            break;
           case 'afterimage':
             this._drawPlayerAfterimage(ctx, item.data);
             break;
@@ -212,6 +232,9 @@
       }
       if (playerDamageSystem) {
         this._drawPlayerDamageFeedback(ctx, playerDamageSystem);
+      }
+      if (itemSystem) {
+        this._drawItemFeedbackEffects(ctx, itemSystem);
       }
       if (testHazard) {
         testHazard.renderPopups(ctx);
@@ -574,13 +597,57 @@
       }
     }
 
-    _drawShadows(ctx, officeMap, player, combat, enemySystem = null) {
+    _drawItemFloorIndicators(ctx, itemSystem) {
+      const activeItems = itemSystem.getActiveItems();
+      for (let i = 0; i < activeItems.length; i++) {
+        const item = activeItems[i];
+        const isFocused = itemSystem.focusedItem === item;
+        const isHeal = item.category === 'heal';
+        const pulse = 0.5 + 0.5 * Math.sin(item.bobPhase);
+
+        ctx.save();
+        ctx.translate(item.position.x, item.position.y);
+
+        // 아이템 발밑 은은한 발광 패드
+        ctx.fillStyle = isHeal
+          ? `rgba(74, 222, 128, ${(0.12 + pulse * 0.08).toFixed(3)})`
+          : `rgba(251, 191, 36, ${(0.12 + pulse * 0.08).toFixed(3)})`;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 20, 13, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 근접 상호작용 가능 범위 안에 들어왔을 때 점선 강조 링 표시
+        if (isFocused) {
+          ctx.strokeStyle = isHeal ? 'rgba(74, 222, 128, 0.72)' : 'rgba(251, 191, 36, 0.78)';
+          ctx.lineWidth = 2;
+          ctx.setLineDash([6, 4]);
+          ctx.beginPath();
+          ctx.ellipse(0, 0, 27, 18, 0, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+
+        ctx.restore();
+      }
+    }
+
+    _drawShadows(ctx, officeMap, player, combat, enemySystem = null, itemSystem = null) {
       ctx.fillStyle = 'rgba(7, 9, 16, 0.45)';
 
       // 장애물 바닥 그림자 (쿼터뷰 입체감을 위해 우하단 오프셋)
       for (let i = 0; i < officeMap.obstacles.length; i++) {
         const obs = officeMap.obstacles[i];
         this._fillRoundRectOnly(ctx, obs.x + 5, obs.y + 5, obs.width, obs.height, 6);
+      }
+
+      if (itemSystem) {
+        const activeItems = itemSystem.getActiveItems();
+        for (let i = 0; i < activeItems.length; i++) {
+          const item = activeItems[i];
+          ctx.beginPath();
+          ctx.ellipse(item.position.x, item.position.y + 3, 14, 7.5, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
 
       if (combat) {
@@ -1711,6 +1778,136 @@
           const p = playerDamageSystem.popups[i];
           const t = Math.min(1, p.elapsed / p.duration);
           const alpha = t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3;
+          ctx.globalAlpha = Math.max(0, alpha);
+          ctx.strokeStyle = OUTLINE_COLOR;
+          ctx.lineWidth = 3.5;
+          ctx.strokeText(p.text, p.x, p.y);
+          ctx.fillStyle = p.color;
+          ctx.fillText(p.text, p.x, p.y);
+        }
+        ctx.restore();
+      }
+    }
+
+    /**
+     * 테스트 맵 고정 아이템 카툰 도형 렌더링 (응급 구급상자 / 무기 강화 모듈)
+     */
+    _drawWorldItem(ctx, item, isFocused = false) {
+      const hoverY = Math.sin(item.bobPhase) * 2.4;
+
+      ctx.save();
+      ctx.translate(item.position.x, item.position.y + hoverY);
+
+      if (item.category === 'heal') {
+        // 1. 응급 구급상자: 상단 빨간 손잡이 + 흰색 케이스 + 초록/빨간 십자(+) 도형
+        this._fillStrokeRoundRect(ctx, -6, -24, 12, 6, 2.5, '#ef4444', OUTLINE_COLOR, 2);
+        this._fillStrokeRoundRect(ctx, -14, -19, 28, 19, 5, '#f8fafc', OUTLINE_COLOR, 2.4);
+
+        // 측면 음영 하단 띠
+        ctx.fillStyle = '#e2e8f0';
+        ctx.fillRect(-12, -5, 24, 3.5);
+
+        // 중앙 응급 십자 마크
+        ctx.fillStyle = '#16a34a';
+        ctx.strokeStyle = OUTLINE_COLOR;
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(-2.5, -15.5);
+        ctx.lineTo(2.5, -15.5);
+        ctx.lineTo(2.5, -12);
+        ctx.lineTo(6, -12);
+        ctx.lineTo(6, -7);
+        ctx.lineTo(2.5, -7);
+        ctx.lineTo(2.5, -3.5);
+        ctx.lineTo(-2.5, -3.5);
+        ctx.lineTo(-2.5, -7);
+        ctx.lineTo(-6, -7);
+        ctx.lineTo(-6, -12);
+        ctx.lineTo(-2.5, -12);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      } else {
+        // 2. 무기 강화 모듈: 전술 금속 모듈 케이스 + 황금빛 강화 코어 & 상승 화살표(▲) 도형
+        this._fillStrokeRoundRect(ctx, -14, -20, 28, 20, 5, '#1e293b', OUTLINE_COLOR, 2.4);
+        this._fillStrokeRoundRect(ctx, -10.5, -16.5, 21, 13, 3, '#0f172a', '#475569', 1.5);
+
+        // 좌우 에너지 단자 포인트
+        ctx.fillStyle = '#38bdf8';
+        ctx.fillRect(-13, -13, 2.5, 6);
+        ctx.fillRect(10.5, -13, 2.5, 6);
+
+        // 중앙 황금 강화 엠블럼 (위쪽 화살표 셰브론)
+        ctx.fillStyle = '#fbbf24';
+        ctx.strokeStyle = OUTLINE_COLOR;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(0, -15.5);
+        ctx.lineTo(6.5, -6.5);
+        ctx.lineTo(2.5, -6.5);
+        ctx.lineTo(2.5, -4.5);
+        ctx.lineTo(-2.5, -4.5);
+        ctx.lineTo(-2.5, -6.5);
+        ctx.lineTo(-6.5, -6.5);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      }
+
+      // 비포커스 상태에서는 도형 바로 위에 기본 이름 표시 (포커스 시에는 캐릭터에 가리지 않도록 상단 레이어에 [E] 표시)
+      if (!isFocused) {
+        ctx.font = '700 10px "Malgun Gothic", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.strokeStyle = OUTLINE_COLOR;
+        ctx.lineWidth = 3;
+        ctx.strokeText(item.name, 0, -29);
+        ctx.fillStyle = item.category === 'heal' ? '#bbf7d0' : '#fed7aa';
+        ctx.fillText(item.name, 0, -29);
+      }
+
+      ctx.restore();
+    }
+
+    /**
+     * 아이템 획득 순간의 파동 링, 포커스 [E] 라벨 및 회복량/강화 단계 플로팅 텍스트 렌더링
+     */
+    _drawItemFeedbackEffects(ctx, itemSystem) {
+      if (itemSystem.focusedItem && !itemSystem.focusedItem.collected) {
+        const fItem = itemSystem.focusedItem;
+        const hoverY = Math.sin(fItem.bobPhase) * 2.4;
+        const labelText = `[E] ${fItem.name}`;
+        ctx.save();
+        ctx.font = '800 11.5px "Malgun Gothic", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.strokeStyle = OUTLINE_COLOR;
+        ctx.lineWidth = 3.2;
+        ctx.strokeText(labelText, fItem.position.x, fItem.position.y + hoverY - 31);
+        ctx.fillStyle = '#fde047';
+        ctx.fillText(labelText, fItem.position.x, fItem.position.y + hoverY - 31);
+        ctx.restore();
+      }
+      for (let i = 0; i < itemSystem.pickupRings.length; i++) {
+        const ring = itemSystem.pickupRings[i];
+        const t = Math.min(1, ring.elapsed / ring.duration);
+        const radius = 6 + (ring.maxRadius - 6) * t;
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, 1 - t);
+        ctx.strokeStyle = ring.color;
+        ctx.lineWidth = 3 * (1 - t * 0.4);
+        ctx.beginPath();
+        ctx.arc(ring.x, ring.y, radius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      if (itemSystem.popups.length > 0) {
+        ctx.save();
+        ctx.font = '800 14.5px "Malgun Gothic", sans-serif';
+        ctx.textAlign = 'center';
+        for (let i = 0; i < itemSystem.popups.length; i++) {
+          const p = itemSystem.popups[i];
+          const t = Math.min(1, p.elapsed / p.duration);
+          const alpha = t < 0.72 ? 1 : 1 - (t - 0.72) / 0.28;
           ctx.globalAlpha = Math.max(0, alpha);
           ctx.strokeStyle = OUTLINE_COLOR;
           ctx.lineWidth = 3.5;

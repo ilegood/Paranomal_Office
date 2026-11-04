@@ -38,6 +38,14 @@
   };
 
   /**
+   * 무기 강화 시스템 설정값 (기본 데미지와 분리 관리)
+   */
+  const WEAPON_UPGRADE_CONFIG = {
+    maxLevel: 3, // 최대 강화 단계: 3단계
+    damageBonusPerLevel: 0.25 // 단계당 기본 데미지의 +25%
+  };
+
+  /**
    * 임시 공격 테스트 타겟 설정값
    */
   const TARGET_CONFIG = {
@@ -105,16 +113,24 @@
    */
   class CombatSystem {
     constructor(initialTargets = []) {
-      // 슬롯별 런타임 무기 상태 초기화
+      this.maxUpgradeLevel = WEAPON_UPGRADE_CONFIG.maxLevel;
+      this.damageBonusPerLevel = WEAPON_UPGRADE_CONFIG.damageBonusPerLevel;
+      this.upgradeLevel = 0;
+
+      // 슬롯별 런타임 무기 상태 초기화 (기본 데미지와 강화 단계를 별도 분리 관리)
       this.weapons = {
         1: {
           config: WEAPON_CONFIGS.melee,
+          baseDamage: WEAPON_CONFIGS.melee.damage,
+          upgradeLevel: 0,
           ammo: null,
           maxAmmo: null,
           cooldownRemaining: 0
         },
         2: {
           config: WEAPON_CONFIGS.ranged,
+          baseDamage: WEAPON_CONFIGS.ranged.damage,
+          upgradeLevel: 0,
           ammo: WEAPON_CONFIGS.ranged.maxAmmo,
           maxAmmo: WEAPON_CONFIGS.ranged.maxAmmo,
           cooldownRemaining: 0
@@ -154,6 +170,73 @@
 
     getCurrentWeaponState() {
       return this.weapons[this.currentSlot];
+    }
+
+    /**
+     * 기본 데미지와 강화 단계로부터 최종 공격 데미지 계산 (근접·원거리 각각 독립 적용)
+     */
+    static calculateUpgradedDamage(
+      baseDamage,
+      upgradeLevel,
+      bonusPerLevel = WEAPON_UPGRADE_CONFIG.damageBonusPerLevel
+    ) {
+      const safeLevel = Math.max(0, upgradeLevel);
+      return Math.round(baseDamage * (1 + bonusPerLevel * safeLevel));
+    }
+
+    /**
+     * 지정 슬롯 무기의 현재 강화 적용 데미지 반환 (기본 데미지는 변경하지 않음)
+     */
+    getWeaponDamage(slot = this.currentSlot) {
+      const ws = this.weapons[slot];
+      if (!ws) {
+        return 0;
+      }
+      return CombatSystem.calculateUpgradedDamage(
+        ws.baseDamage,
+        ws.upgradeLevel,
+        this.damageBonusPerLevel
+      );
+    }
+
+    /**
+     * 추가 무기 강화 가능 여부 반환 (최대 3단계 제한)
+     */
+    canUpgradeWeapon() {
+      return this.upgradeLevel < this.maxUpgradeLevel;
+    }
+
+    /**
+     * 무기 강화 단계를 증가시킨다. (근접·원거리 각자의 기본 데미지를 기준으로 독립 계산)
+     */
+    upgradeWeapon(levels = 1) {
+      if (levels <= 0 || !this.canUpgradeWeapon()) {
+        return {
+          applied: false,
+          prevLevel: this.upgradeLevel,
+          newLevel: this.upgradeLevel,
+          maxLevel: this.maxUpgradeLevel,
+          bonusPercent: Math.round(this.upgradeLevel * this.damageBonusPerLevel * 100),
+          meleeDamage: this.getWeaponDamage(1),
+          rangedDamage: this.getWeaponDamage(2)
+        };
+      }
+
+      const prevLevel = this.upgradeLevel;
+      const nextLevel = Math.min(this.maxUpgradeLevel, prevLevel + levels);
+      this.upgradeLevel = nextLevel;
+      this.weapons[1].upgradeLevel = nextLevel;
+      this.weapons[2].upgradeLevel = nextLevel;
+
+      return {
+        applied: nextLevel > prevLevel,
+        prevLevel,
+        newLevel: nextLevel,
+        maxLevel: this.maxUpgradeLevel,
+        bonusPercent: Math.round(nextLevel * this.damageBonusPerLevel * 100),
+        meleeDamage: this.getWeaponDamage(1),
+        rangedDamage: this.getWeaponDamage(2)
+      };
     }
 
     /**
@@ -214,6 +297,7 @@
       weaponState.cooldownRemaining = cfg.cooldown;
 
       const arcRad = (cfg.arcDegrees * Math.PI) / 180;
+      const effectiveDamage = this.getWeaponDamage(cfg.slot);
 
       // 1. 공격 판정 객체 생성 (데미지, 범위, 각도, 판정 유지 시간만 관리)
       const swing = {
@@ -222,7 +306,7 @@
         angle: player.direction.angle,
         range: cfg.range,
         arcRad,
-        damage: cfg.damage,
+        damage: effectiveDamage,
         elapsed: 0,
         activeDuration: cfg.activeDuration,
         isHitboxActive: true,
@@ -261,6 +345,7 @@
 
       const startX = player.position.x + dirX * cfg.muzzleOffset;
       const startY = player.position.y + dirY * cfg.muzzleOffset;
+      const effectiveDamage = this.getWeaponDamage(cfg.slot);
 
       const projectile = {
         x: startX,
@@ -272,7 +357,7 @@
         speed: cfg.projectileSpeed,
         angle: player.direction.angle,
         radius: cfg.projectileRadius,
-        damage: cfg.damage,
+        damage: effectiveDamage,
         alive: true
       };
 
@@ -594,6 +679,11 @@
         weaponId: cfg.id,
         weaponName: cfg.name,
         attackModeText: cfg.attackModeText,
+        baseDamage: ws.baseDamage,
+        damage: this.getWeaponDamage(this.currentSlot),
+        upgradeLevel: ws.upgradeLevel,
+        maxUpgradeLevel: this.maxUpgradeLevel,
+        upgradeBonusPercent: Math.round(ws.upgradeLevel * this.damageBonusPerLevel * 100),
         usesAmmo: cfg.usesAmmo,
         ammo: ws.ammo,
         maxAmmo: ws.maxAmmo,
@@ -606,6 +696,7 @@
   }
 
   PO.WEAPON_CONFIGS = WEAPON_CONFIGS;
+  PO.WEAPON_UPGRADE_CONFIG = WEAPON_UPGRADE_CONFIG;
   PO.TARGET_CONFIG = TARGET_CONFIG;
   PO.TestTarget = TestTarget;
   PO.CombatSystem = CombatSystem;

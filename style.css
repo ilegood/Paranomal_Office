@@ -525,3 +525,143 @@ body {
   transform: translateY(2px);
   border-bottom-width: 2px;
 }
+
+/* E 상호작용 보조 키캡 강조 */
+.keycap-interact {
+  border-color: #60a5fa;
+  color: #bae6fd;
+}
+
+/* 무기 강화 단계 및 적용 데미지 표시 */
+.weapon-upgrade-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  color: #94a3b8;
+}
+
+.weapon-upgrade-value.is-upgraded {
+  color: #fbbf24;
+}
+
+.weapon-upgrade-value.is-max {
+  color: #f472b6;
+}
+
+.weapon-damage-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  color: #e2e8f0;
+}
+
+.weapon-damage-value.is-upgraded {
+  color: #fde047;
+}
+
+/* 아이템 근접 시 E 획득 안내 배너 (하단 대시 패널 위쪽 중앙 배치, 체력·무기 UI 비간섭) */
+.interaction-prompt {
+  position: absolute;
+  left: 50%;
+  bottom: clamp(70px, 9.2vh, 80px);
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 15px;
+  border-color: #fbbf24;
+  background: rgba(15, 20, 34, 0.92);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.65), 0 0 14px rgba(251, 191, 36, 0.22);
+  white-space: nowrap;
+}
+
+.interaction-prompt.is-disabled {
+  border-color: #64748b;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.65);
+}
+
+.prompt-keycap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 900;
+  color: #111522;
+  background: #fbbf24;
+  border: 2px solid #b45309;
+  border-bottom-width: 3px;
+  border-radius: 6px;
+}
+
+.interaction-prompt.is-disabled .prompt-keycap {
+  color: #94a3b8;
+  background: #1e293b;
+  border-color: #475569;
+}
+
+.interaction-text-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.interaction-title {
+  font-size: clamp(12px, 1vw, 13.5px);
+  font-weight: 800;
+  color: #f8fafc;
+}
+
+.interaction-detail {
+  font-size: clamp(10.5px, 0.88vw, 12px);
+  font-weight: 700;
+  color: #fde047;
+}
+
+.interaction-prompt.is-disabled .interaction-detail {
+  color: #fda4af;
+}
+
+/* 아이템 획득 결과 알림 배너 (상단 중앙 벽면 영역 배치, 기존 체력·무기 UI 비간섭) */
+.item-feedback-banner {
+  position: absolute;
+  top: clamp(64px, 8.2vh, 78px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 16px;
+  border-color: #4ade80;
+  background: rgba(14, 21, 35, 0.92);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.65);
+  white-space: nowrap;
+}
+
+.item-feedback-banner.is-upgrade {
+  border-color: #fbbf24;
+}
+
+.item-feedback-banner.is-blocked {
+  border-color: #fb7185;
+}
+
+.item-feedback-title {
+  font-size: clamp(11.5px, 0.95vw, 13px);
+  font-weight: 900;
+  color: #4ade80;
+}
+
+.item-feedback-banner.is-upgrade .item-feedback-title {
+  color: #fbbf24;
+}
+
+.item-feedback-banner.is-blocked .item-feedback-title {
+  color: #fda4af;
+}
+
+.item-feedback-detail {
+  font-size: clamp(11.5px, 0.95vw, 13px);
+  font-weight: 700;
+  color: #f1f5f9;
+}

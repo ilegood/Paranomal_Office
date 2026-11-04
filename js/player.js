@@ -334,6 +334,33 @@
     }
 
     /**
+     * 플레이어 체력을 회복한다. (최대 체력을 초과하지 않으며, 이미 최대 체력이거나 사망 시 미적용)
+     */
+    heal(amount) {
+      if (this.isDead || amount <= 0 || this.hp >= this.maxHp) {
+        return {
+          applied: false,
+          healed: 0,
+          prevHp: this.hp,
+          currentHp: this.hp,
+          maxHp: this.maxHp
+        };
+      }
+
+      const prevHp = this.hp;
+      this.setHp(this.hp + amount);
+      const healed = this.hp - prevHp;
+
+      return {
+        applied: healed > 0,
+        healed,
+        prevHp,
+        currentHp: this.hp,
+        maxHp: this.maxHp
+      };
+    }
+
+    /**
      * 쿼터뷰 Y-정렬 기준점 (바닥에 닿은 발의 Y 좌표)
      */
     getSortY() {

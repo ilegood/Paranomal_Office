@@ -4,7 +4,7 @@
   const PO = (global.PO = global.PO || {});
 
   /**
-   * HUD UI(체력 바, WASD/Space 조작 표시, 대시 상태, 장착 무기/공격 방식/탄약/쿨다운 상태) 동기화 모듈
+   * HUD UI(체력 바, 조작 표시, 대시 상태, 장착 무기/강화 단계/공격 상태, 아이템 획득 안내/결과 알림, 게임 오버) 동기화 모듈
    */
   class UIManager {
     constructor() {
@@ -16,12 +16,23 @@
       this.gameOverOverlayEl = document.getElementById('game-over-overlay');
       this.restartBtnEl = document.getElementById('restart-btn');
 
+      // 아이템 상호작용 안내 및 획득 결과 배너 요소
+      this.interactionPromptEl = document.getElementById('interaction-prompt');
+      this.interactionKeyEl = document.getElementById('interaction-key');
+      this.interactionTitleEl = document.getElementById('interaction-title');
+      this.interactionDetailEl = document.getElementById('interaction-detail');
+
+      this.itemBannerEl = document.getElementById('item-feedback-banner');
+      this.itemBannerTitleEl = document.getElementById('item-feedback-title');
+      this.itemBannerDetailEl = document.getElementById('item-feedback-detail');
+
       this.keyEls = {
         up: document.getElementById('key-w'),
         left: document.getElementById('key-a'),
         down: document.getElementById('key-s'),
         right: document.getElementById('key-d'),
-        dash: document.getElementById('key-space')
+        dash: document.getElementById('key-space'),
+        interact: document.getElementById('key-e')
       };
 
       // 대시 UI 요소
@@ -29,11 +40,13 @@
       this.dashStatusTextEl = document.getElementById('dash-status-text');
       this.dashFillEl = document.getElementById('dash-cooldown-fill');
 
-      // 공격/무기 UI 요소
+      // 공격/무기/강화 UI 요소
       this.slotTab1El = document.getElementById('slot-tab-1');
       this.slotTab2El = document.getElementById('slot-tab-2');
       this.weaponNameEl = document.getElementById('weapon-name');
       this.weaponModeEl = document.getElementById('weapon-mode');
+      this.weaponUpgradeTextEl = document.getElementById('weapon-upgrade-text');
+      this.weaponDamageTextEl = document.getElementById('weapon-damage-text');
       this.weaponAmmoRowEl = document.getElementById('weapon-ammo-row');
       this.weaponAmmoEl = document.getElementById('weapon-ammo');
       this.cooldownTextEl = document.getElementById('weapon-cooldown-text');
@@ -46,7 +59,8 @@
         left: false,
         down: false,
         right: false,
-        dash: false
+        dash: false,
+        interact: false
       };
 
       this._lastDashLabel = null;
@@ -54,12 +68,17 @@
       this._lastDashMode = null;
 
       this._lastWeaponSlot = null;
+      this._lastUpgradeText = null;
+      this._lastDamageText = null;
       this._lastAmmo = null;
       this._lastUsesAmmo = null;
       this._lastCooldownText = null;
       this._lastCooldownPercent = null;
       this._lastHurtState = false;
       this._lastGameOver = false;
+
+      this._lastPromptSig = '';
+      this._lastBannerSig = '';
     }
 
     /**
@@ -89,21 +108,33 @@
     }
 
     /**
-     * 플레이어의 체력, 입력 상태, 무기/공격 상태, 대시 상태 및 사망(게임 오버) 여부를 UI에 반영
+     * 플레이어의 체력, 입력 상태, 무기/강화 상태, 대시 상태, 아이템 안내 및 사망 여부를 UI에 반영
      */
-    update(player, inputState, combatUIState = null, dashUIState = null, isGameOver = false) {
+    update(
+      player,
+      inputState,
+      combatUIState = null,
+      dashUIState = null,
+      isGameOver = false,
+      itemUIState = null
+    ) {
       this._syncHealth(player.hp, player.maxHp, player.hurtFlashTimer > 0);
-      this.setGameOver(isGameOver || Boolean(player.isDead));
+      const effectiveGameOver = isGameOver || Boolean(player.isDead);
+      this.setGameOver(effectiveGameOver);
+
       if (inputState) {
         this._syncKeys(inputState);
       }
       if (combatUIState) {
         this._syncCombat(combatUIState);
       }
-      const effectiveDashState = dashUIState || (player.getDashUIState ? player.getDashUIState() : null);
+      const effectiveDashState =
+        dashUIState || (player.getDashUIState ? player.getDashUIState() : null);
       if (effectiveDashState) {
         this._syncDash(effectiveDashState);
       }
+
+      this._syncItems(effectiveGameOver ? null : itemUIState);
     }
 
     _syncHealth(hp, maxHp, isHurt = false) {
@@ -134,7 +165,7 @@
     }
 
     _syncKeys(state) {
-      const keys = ['up', 'left', 'down', 'right', 'dash'];
+      const keys = ['up', 'left', 'down', 'right', 'dash', 'interact'];
       for (let i = 0; i < keys.length; i++) {
         const k = keys[i];
         const pressed = Boolean(state[k]);
@@ -212,7 +243,38 @@
         }
       }
 
-      // 2. 탄약 UI 표시 여부 및 잔탄 수 갱신 (근접 무기는 탄약 UI를 표시하지 않음)
+      // 2. 현재 무기 강화 단계 및 적용 공격 데미지 표시
+      const lv = combatState.upgradeLevel ?? 0;
+      const maxLv = combatState.maxUpgradeLevel ?? 3;
+      const bonusPct = combatState.upgradeBonusPercent ?? 0;
+      const upgradeLabel =
+        lv >= maxLv
+          ? `MAX ${lv} / ${maxLv}단계 (+${bonusPct}%)`
+          : lv > 0
+            ? `+${lv} / ${maxLv}단계 (+${bonusPct}%)`
+            : `${lv} / ${maxLv}단계`;
+
+      if (upgradeLabel !== this._lastUpgradeText) {
+        this._lastUpgradeText = upgradeLabel;
+        if (this.weaponUpgradeTextEl) {
+          this.weaponUpgradeTextEl.textContent = upgradeLabel;
+          this.weaponUpgradeTextEl.classList.toggle('is-upgraded', lv > 0 && lv < maxLv);
+          this.weaponUpgradeTextEl.classList.toggle('is-max', lv >= maxLv);
+        }
+      }
+
+      const dmg = combatState.damage ?? combatState.baseDamage ?? 0;
+      const baseDmg = combatState.baseDamage ?? dmg;
+      const damageLabel = lv > 0 ? `${dmg} (기본 ${baseDmg})` : `${dmg}`;
+      if (damageLabel !== this._lastDamageText) {
+        this._lastDamageText = damageLabel;
+        if (this.weaponDamageTextEl) {
+          this.weaponDamageTextEl.textContent = damageLabel;
+          this.weaponDamageTextEl.classList.toggle('is-upgraded', lv > 0);
+        }
+      }
+
+      // 3. 탄약 UI 표시 여부 및 잔탄 수 갱신 (근접 무기는 탄약 UI를 표시하지 않음)
       if (combatState.usesAmmo !== this._lastUsesAmmo) {
         this._lastUsesAmmo = combatState.usesAmmo;
         if (this.weaponAmmoRowEl) {
@@ -228,7 +290,7 @@
         }
       }
 
-      // 3. 공격 쿨다운 상태 텍스트 및 게이지 갱신
+      // 4. 공격 쿨다운 상태 텍스트 및 게이지 갱신
       let cooldownLabel = '공격 가능';
       let stateClass = 'ready';
 
@@ -255,6 +317,56 @@
         if (this.cooldownFillEl) {
           this.cooldownFillEl.style.width = `${percent}%`;
           this.cooldownFillEl.classList.toggle('is-ready', combatState.cooldownRemaining <= 0.005);
+        }
+      }
+    }
+
+    _syncItems(itemUIState) {
+      const prompt = itemUIState ? itemUIState.prompt : null;
+      const promptSig = prompt
+        ? `${prompt.itemId}|${prompt.canPickup}|${prompt.title}|${prompt.detail}`
+        : '';
+
+      if (promptSig !== this._lastPromptSig) {
+        this._lastPromptSig = promptSig;
+        if (this.interactionPromptEl) {
+          if (!prompt) {
+            this.interactionPromptEl.hidden = true;
+          } else {
+            this.interactionPromptEl.hidden = false;
+            this.interactionPromptEl.classList.toggle('is-disabled', !prompt.canPickup);
+            if (this.interactionKeyEl) {
+              this.interactionKeyEl.textContent = prompt.keyLabel || 'E';
+            }
+            if (this.interactionTitleEl) {
+              this.interactionTitleEl.textContent = prompt.title;
+            }
+            if (this.interactionDetailEl) {
+              this.interactionDetailEl.textContent = prompt.detail;
+            }
+          }
+        }
+      }
+
+      const banner = itemUIState ? itemUIState.banner : null;
+      const bannerSig = banner ? `${banner.kind}|${banner.title}|${banner.detail}` : '';
+
+      if (bannerSig !== this._lastBannerSig) {
+        this._lastBannerSig = bannerSig;
+        if (this.itemBannerEl) {
+          if (!banner) {
+            this.itemBannerEl.hidden = true;
+          } else {
+            this.itemBannerEl.hidden = false;
+            this.itemBannerEl.classList.toggle('is-upgrade', banner.kind === 'weapon_upgrade');
+            this.itemBannerEl.classList.toggle('is-blocked', banner.kind === 'blocked');
+            if (this.itemBannerTitleEl) {
+              this.itemBannerTitleEl.textContent = banner.title;
+            }
+            if (this.itemBannerDetailEl) {
+              this.itemBannerDetailEl.textContent = banner.detail;
+            }
+          }
         }
       }
     }

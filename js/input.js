@@ -4,7 +4,7 @@
   const PO = (global.PO = global.PO || {});
 
   /**
-   * 키보드(WASD 이동, 1/2 무기 전환) 및 마우스(조준 좌표, 좌클릭 공격) 입력을 관리하는 클래스
+   * 키보드(WASD 이동, Space 대시, E 상호작용, 1/2 무기 전환) 및 마우스(조준 좌표, 좌클릭 공격) 입력 관리
    */
   class InputManager {
     constructor(targetWindow = window) {
@@ -14,11 +14,15 @@
         down: false,
         left: false,
         right: false,
-        dash: false
+        dash: false,
+        interact: false
       };
 
       // 대시 단발 입력 버퍼 (Space 키)
       this.dashBuffered = false;
+
+      // 아이템 상호작용 단발 입력 버퍼 (E 키)
+      this.interactBuffered = false;
 
       // 마우스 조준 및 좌클릭 공격 상태
       this.mouse = {
@@ -95,6 +99,17 @@
     }
 
     /**
+     * E 키(아이템 상호작용) 판별 (한글 'ㄷ'/'ㄸ' 상태 호환 포함)
+     */
+    _isInteractKey(event) {
+      if (event.code === 'KeyE') {
+        return true;
+      }
+      const key = (event.key || '').toLowerCase();
+      return key === 'e' || key === 'ㄷ' || key === 'ㄸ';
+    }
+
+    /**
      * 숫자 1 / 2 무기 전환 키 판별
      */
     _resolveWeaponSlot(event) {
@@ -121,6 +136,15 @@
         return;
       }
 
+      if (this._isInteractKey(event)) {
+        event.preventDefault();
+        this.keys.interact = true;
+        if (!event.repeat) {
+          this.interactBuffered = true;
+        }
+        return;
+      }
+
       const slot = this._resolveWeaponSlot(event);
       if (slot !== null) {
         event.preventDefault();
@@ -140,6 +164,11 @@
     _handleKeyUp(event) {
       if (event.code === 'Space' || event.key === ' ') {
         this.keys.dash = false;
+        return;
+      }
+
+      if (this._isInteractKey(event)) {
+        this.keys.interact = false;
         return;
       }
 
@@ -185,7 +214,9 @@
       this.keys.left = false;
       this.keys.right = false;
       this.keys.dash = false;
+      this.keys.interact = false;
       this.dashBuffered = false;
+      this.interactBuffered = false;
       this.mouse.leftDown = false;
       this.mouse.attackBuffered = false;
       this.pendingWeaponSlot = null;
@@ -197,6 +228,15 @@
     consumeDashInput() {
       const triggered = this.dashBuffered;
       this.dashBuffered = false;
+      return triggered;
+    }
+
+    /**
+     * E 아이템 상호작용 단발 입력이 있었는지 확인하고 버퍼를 소비
+     */
+    consumeInteractInput() {
+      const triggered = this.interactBuffered;
+      this.interactBuffered = false;
       return triggered;
     }
 
@@ -252,6 +292,7 @@
         left: this.keys.left,
         right: this.keys.right,
         dash: this.keys.dash,
+        interact: this.keys.interact,
         leftClick: this.mouse.leftDown
       };
     }

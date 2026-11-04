@@ -35,15 +35,33 @@
           <!-- 프로토타입 상태 표시 -->
           <aside class="hud-card prototype-badge">
             <span class="status-dot" aria-hidden="true"></span>
-            <span class="prototype-text">PROTOTYPE · Phase 5 (전투 시스템 검증용 · 적 공격 및 피해 시스템)</span>
+            <span class="prototype-text">PROTOTYPE · Phase 6 (전투 시스템 검증용 · 회복 및 무기 강화 아이템)</span>
           </aside>
+        </div>
+
+        <!-- 아이템 획득 결과 피드백 배너 (회복량 / 강화 단계 변화 표시, 기존 체력·무기 UI와 분리된 상단 중앙) -->
+        <div id="item-feedback-banner" class="hud-card item-feedback-banner" role="status" hidden>
+          <span id="item-feedback-title" class="item-feedback-title">아이템 획득</span>
+          <span id="item-feedback-detail" class="item-feedback-detail">효과 적용됨</span>
+        </div>
+
+        <!-- 아이템 근접 시 E 키 획득 안내 (하단 대시 패널 위쪽 중앙 배치) -->
+        <div id="interaction-prompt" class="hud-card interaction-prompt" role="status" hidden>
+          <kbd id="interaction-key" class="prompt-keycap">E</kbd>
+          <div class="interaction-text-group">
+            <span id="interaction-title" class="interaction-title">응급 구급상자 획득</span>
+            <span id="interaction-detail" class="interaction-detail">체력 +30 회복</span>
+          </div>
         </div>
 
         <div class="hud-bottom">
           <!-- 조작 안내 -->
           <div class="hud-card controls-guide" aria-label="조작 안내">
             <div class="keycap-group" aria-hidden="true">
-              <kbd id="key-w" class="keycap">W</kbd>
+              <div class="keycap-row">
+                <kbd id="key-w" class="keycap">W</kbd>
+                <kbd id="key-e" class="keycap keycap-interact">E</kbd>
+              </div>
               <div class="keycap-row">
                 <kbd id="key-a" class="keycap">A</kbd>
                 <kbd id="key-s" class="keycap">S</kbd>
@@ -52,7 +70,7 @@
               <kbd id="key-space" class="keycap keycap-space">SPACE</kbd>
             </div>
             <div class="controls-text-group">
-              <span class="controls-label"><strong>WASD</strong> 이동 · <strong>Space</strong> 대시</span>
+              <span class="controls-label"><strong>WASD</strong> 이동 · <strong>Space</strong> 대시 · <strong>E</strong> 획득</span>
               <span class="controls-sublabel"><strong>마우스</strong> 조준/공격 · <strong>1 / 2</strong> 무기 전환</span>
             </div>
           </div>
@@ -68,7 +86,7 @@
             </div>
           </section>
 
-          <!-- 장착 무기 및 공격 상태 UI -->
+          <!-- 장착 무기, 강화 단계 및 공격 상태 UI -->
           <section id="weapon-panel" class="hud-card weapon-panel" aria-label="장착 무기 정보">
             <div class="weapon-slot-tabs" aria-hidden="true">
               <span id="slot-tab-1" class="slot-tab is-active"><kbd>1</kbd> 근접</span>
@@ -78,6 +96,17 @@
             <div class="weapon-info-main">
               <div id="weapon-name" class="weapon-name">대형 사무용 스테이플러</div>
               <div id="weapon-mode" class="weapon-mode">근접 · 부채꼴 타격</div>
+            </div>
+
+            <!-- 현재 무기 강화 단계 및 적용 공격력 -->
+            <div class="weapon-stat-row">
+              <span class="weapon-stat-label">강화 단계</span>
+              <span id="weapon-upgrade-text" class="weapon-upgrade-value">0 / 3단계</span>
+            </div>
+
+            <div class="weapon-stat-row">
+              <span class="weapon-stat-label">공격 데미지</span>
+              <span id="weapon-damage-text" class="weapon-damage-value">25</span>
             </div>
 
             <!-- 원거리 무기 장착 시에만 표시 (근접 무기는 숨김) -->
@@ -119,6 +148,7 @@
   <script src="js/movement.js"></script>
   <script src="js/enemy.js"></script>
   <script src="js/combat.js"></script>
+  <script src="js/item.js"></script>
   <script src="js/test-hazard.js"></script>
   <script src="js/renderer.js"></script>
   <script src="js/ui.js"></script>
