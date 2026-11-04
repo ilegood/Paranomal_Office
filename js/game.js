@@ -15,11 +15,12 @@
         throw new Error('필수 게임 DOM 요소(#game-stage, #game-canvas)를 찾을 수 없습니다.');
       }
 
-      // 고정 맵 및 입출력/렌더링/UI 모듈 초기화
+      // 고정 맵 및 입출력/렌더링/미니맵/UI 모듈 초기화
       this.map = new PO.OfficeMap();
       this.input = new PO.InputManager(window);
       this.movement = new PO.MovementSystem();
       this.renderer = new PO.Renderer(this.canvas, this.stageElement, this.map);
+      this.minimap = PO.Minimap ? new PO.Minimap() : null;
       this.ui = new PO.UIManager();
 
       // 마우스 월드 조준 좌표 (마우스 입력 전에는 null)
@@ -57,17 +58,23 @@
       });
 
       this.enemies = new PO.EnemySystem(
-        PO.EnemySystem.createDefaultEnemies(this.player.speed)
+        PO.EnemySystem.createDefaultEnemies(this.player.speed, this.map)
       );
 
-      this.combat = new PO.CombatSystem(PO.CombatSystem.createDefaultTargets());
+      this.combat = new PO.CombatSystem(PO.CombatSystem.createDefaultTargets(this.map));
 
       this.items = PO.ItemSystem
-        ? new PO.ItemSystem(PO.ItemSystem.createDefaultMapItems())
+        ? new PO.ItemSystem(PO.ItemSystem.createDefaultMapItems(this.map))
         : null;
 
       // 대시 무적 판정 검증용 임시 위험 구역 (코어 시스템과 분리, 미로드 시 자동 생략)
-      this.testHazard = PO.TestDamageZone ? new PO.TestDamageZone() : null;
+      this.testHazard = PO.TestDamageZone
+        ? new PO.TestDamageZone(this.map.testHazardSpawn || {})
+        : null;
+
+      if (this.renderer) {
+        this.renderer.updateCamera(this.player, this.map);
+      }
     }
 
     /**
@@ -163,23 +170,23 @@
     }
 
     /**
-     * 마우스 커서의 화면 좌표를 월드 좌표로 변환하여 플레이어 조준 방향 갱신
+     * 마우스 커서의 화면 좌표를 카메라 오프셋이 반영된 월드 좌표로 변환하여 플레이어 조준 방향 갱신
+     * (플레이어 이동으로 카메라가 스크롤될 때도 조준 좌표가 항상 마우스 커서와 일치하도록 매 프레임 계산)
      */
     _updateAimFromMouse() {
       if (!this.input.mouse.hasPosition || this.player.isDead) {
         return;
       }
 
-      if (this.input.consumeMouseDirty() || this.aimWorld === null) {
-        const rawWorld = this.renderer.screenToWorld(
-          this.input.mouse.clientX,
-          this.input.mouse.clientY
-        );
-        this.aimWorld = {
-          x: Math.max(0, Math.min(this.map.width, rawWorld.x)),
-          y: Math.max(0, Math.min(this.map.height, rawWorld.y))
-        };
-      }
+      this.input.consumeMouseDirty();
+      const rawWorld = this.renderer.screenToWorld(
+        this.input.mouse.clientX,
+        this.input.mouse.clientY
+      );
+      this.aimWorld = {
+        x: Math.max(0, Math.min(this.map.width, rawWorld.x)),
+        y: Math.max(0, Math.min(this.map.height, rawWorld.y))
+      };
 
       const aimOrigin = this.player.getAimOrigin();
       this.player.setDirection(this.aimWorld.x - aimOrigin.x, this.aimWorld.y - aimOrigin.y);
@@ -213,6 +220,9 @@
           updateDirection: !this.input.mouse.hasPosition,
           circleBlockers
         });
+
+        // 카메라를 플레이어의 새 위치로 먼저 갱신한 뒤 조준 좌표를 재보정
+        this.renderer.updateCamera(this.player, this.map);
 
         // 5. 플레이어 상태 타이머(대시 쿨다운 1.2s, 대시 무적 0.25s, 피격 무적 0.6s, 잔상 수명) 업데이트
         this.player.updateStatusTimers(dt);
@@ -317,6 +327,16 @@
         this.playerDamage,
         this.items
       );
+
+      if (this.minimap) {
+        this.minimap.render(
+          this.map,
+          this.player,
+          this.enemies,
+          this.items,
+          this.renderer.camera
+        );
+      }
     }
   }
 

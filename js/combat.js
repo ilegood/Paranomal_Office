@@ -159,13 +159,16 @@
     /**
      * 기본 사무실 맵 내 테스트 타겟 배치 생성 헬퍼
      */
-    static createDefaultTargets() {
-      return [
-        { id: 'target-center-left', x: 490, y: 505 },
-        { id: 'target-center-right', x: 805, y: 505 },
-        { id: 'target-upper-left', x: 415, y: 200 },
-        { id: 'target-upper-right', x: 865, y: 200 }
-      ];
+    static createDefaultTargets(officeMap = null) {
+      if (
+        officeMap &&
+        Array.isArray(officeMap.targetSpawns) &&
+        officeMap.targetSpawns.length > 0
+      ) {
+        return officeMap.targetSpawns.map((spawn) => ({ ...spawn }));
+      }
+
+      return [{ id: 'target-start-dummy', x: 525, y: 1045 }];
     }
 
     getCurrentWeaponState() {

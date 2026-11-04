@@ -32,11 +32,29 @@
             </div>
           </section>
 
-          <!-- 프로토타입 상태 표시 -->
-          <aside class="hud-card prototype-badge">
-            <span class="status-dot" aria-hidden="true"></span>
-            <span class="prototype-text">PROTOTYPE · Phase 6 (전투 시스템 검증용 · 회복 및 무기 강화 아이템)</span>
-          </aside>
+          <!-- 우측 상단: 프로토타입 배지 및 실시간 전체 구역 미니맵 -->
+          <div class="hud-top-right">
+            <aside class="hud-card prototype-badge">
+              <span class="status-dot" aria-hidden="true"></span>
+              <span class="prototype-text">PROTOTYPE · Phase 7 (다중 방 탐험 맵 및 미니맵)</span>
+            </aside>
+
+            <aside id="minimap-panel" class="hud-card minimap-panel" aria-label="전체 구역 미니맵">
+              <div class="minimap-header">
+                <span class="minimap-title">미니맵</span>
+                <span id="minimap-zone-text" class="minimap-zone-badge">시작 방</span>
+              </div>
+              <div class="minimap-canvas-wrap">
+                <canvas id="minimap-canvas" width="214" height="118" aria-label="탐험 맵 구조 및 위치 표시"></canvas>
+              </div>
+              <div class="minimap-legend" aria-hidden="true">
+                <span class="legend-item"><i class="legend-dot is-player"></i>나</span>
+                <span class="legend-item"><i class="legend-dot is-enemy"></i>적</span>
+                <span class="legend-item"><i class="legend-dot is-heal"></i>회복</span>
+                <span class="legend-item"><i class="legend-dot is-upgrade"></i>강화</span>
+              </div>
+            </aside>
+          </div>
         </div>
 
         <!-- 아이템 획득 결과 피드백 배너 (회복량 / 강화 단계 변화 표시, 기존 체력·무기 UI와 분리된 상단 중앙) -->
@@ -151,6 +169,7 @@
   <script src="js/item.js"></script>
   <script src="js/test-hazard.js"></script>
   <script src="js/renderer.js"></script>
+  <script src="js/minimap.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/game.js"></script>
 </body>

@@ -665,3 +665,102 @@ body {
   font-weight: 700;
   color: #f1f5f9;
 }
+
+/* 우측 상단 배지 및 실시간 미니맵 영역 (기존 체력·무기·대시·상호작용·게임오버 UI 비간섭 배치) */
+.hud-top-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.minimap-panel {
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-color: #334368;
+  background: rgba(13, 18, 31, 0.90);
+}
+
+.minimap-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.minimap-title {
+  font-size: clamp(10.5px, 0.88vw, 12px);
+  font-weight: 800;
+  color: #cbd5e1;
+  letter-spacing: 0.02em;
+}
+
+.minimap-zone-badge {
+  font-size: clamp(10px, 0.84vw, 11.5px);
+  font-weight: 800;
+  color: #7dd3fc;
+  background: rgba(14, 116, 144, 0.24);
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  border-radius: 5px;
+  padding: 1px 7px;
+}
+
+.minimap-canvas-wrap {
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1.5px solid #1e293b;
+  background: #0a0f1c;
+}
+
+#minimap-canvas {
+  display: block;
+  width: clamp(174px, 16.6vw, 214px);
+  height: clamp(96px, 10.8vh, 118px);
+}
+
+.minimap-legend {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: clamp(9.5px, 0.78vw, 11px);
+  font-weight: 700;
+  color: #94a3b8;
+  padding: 0 2px;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.legend-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: 1px solid #090d16;
+}
+
+.legend-dot.is-player {
+  background: #38bdf8;
+  box-shadow: 0 0 5px rgba(56, 189, 248, 0.85);
+}
+
+.legend-dot.is-enemy {
+  background: #f43f5e;
+}
+
+.legend-dot.is-heal {
+  background: #4ade80;
+  border-radius: 2px;
+}
+
+.legend-dot.is-upgrade {
+  background: #fbbf24;
+  border-radius: 1px;
+  transform: rotate(45deg);
+}

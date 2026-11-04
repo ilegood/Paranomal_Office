@@ -15,6 +15,18 @@
       this.stageElement = stageElement;
       this.officeMap = officeMap;
 
+      // 논리 뷰포트 해상도 (16:10 고정, 월드 크기와 독립적인 카메라 뷰포트)
+      this.viewWidth = 1280;
+      this.viewHeight = 800;
+
+      // 플레이어를 추적하는 월드 카메라 상태
+      this.camera = {
+        x: 0,
+        y: 0,
+        width: this.viewWidth,
+        height: this.viewHeight
+      };
+
       this.scale = 1;
       this.dpr = 1;
 
@@ -24,15 +36,15 @@
     }
 
     /**
-     * 브라우저 창 크기에 맞춰 16:10 게임 화면 비율을 유지하며 고해상도(DPR) 스케일링 적용
+     * 브라우저 창 크기에 맞춰 16:10 게임 뷰포트 비율을 유지하며 고해상도(DPR) 스케일링 적용
      */
     resize() {
       const padding = 16;
       const availWidth = Math.max(320, window.innerWidth - padding);
       const availHeight = Math.max(240, window.innerHeight - padding);
 
-      const logicalWidth = this.officeMap.width;
-      const logicalHeight = this.officeMap.height;
+      const logicalWidth = this.viewWidth;
+      const logicalHeight = this.viewHeight;
 
       this.scale = Math.min(availWidth / logicalWidth, availHeight / logicalHeight);
       this.dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -48,26 +60,46 @@
     }
 
     /**
-     * 화면 좌표를 게임 월드 좌표로 변환
-     * 캔버스의 실제 렌더링 위치(rect.left/top)와 크기(rect.width/height)를 기준으로 계산하여
-     * 브라우저 창 크기가 변경되거나 테두리가 있어도 항상 정확한 월드 좌표를 반환한다.
+     * 플레이어 월드 좌표를 중심으로 카메라 뷰포트를 갱신하고 맵 경계 내로 클램핑
+     */
+    updateCamera(player, officeMap = this.officeMap) {
+      if (!player || !officeMap) {
+        return this.camera;
+      }
+
+      const maxCamX = Math.max(0, officeMap.width - this.viewWidth);
+      const maxCamY = Math.max(0, officeMap.height - this.viewHeight);
+
+      const targetX = player.position.x - this.viewWidth * 0.5;
+      const targetY = player.position.y - this.viewHeight * 0.5;
+
+      this.camera.x = Math.max(0, Math.min(maxCamX, targetX));
+      this.camera.y = Math.max(0, Math.min(maxCamY, targetY));
+      this.camera.width = this.viewWidth;
+      this.camera.height = this.viewHeight;
+
+      return this.camera;
+    }
+
+    /**
+     * 화면 좌표를 카메라 오프셋이 반영된 실제 게임 월드 좌표로 변환
      */
     screenToWorld(clientX, clientY) {
       const rect = this.canvas.getBoundingClientRect();
       if (rect.width <= 0 || rect.height <= 0) {
         return {
-          x: this.officeMap.width * 0.5,
-          y: this.officeMap.height * 0.5
+          x: this.camera.x + this.viewWidth * 0.5,
+          y: this.camera.y + this.viewHeight * 0.5
         };
       }
       return {
-        x: ((clientX - rect.left) / rect.width) * this.officeMap.width,
-        y: ((clientY - rect.top) / rect.height) * this.officeMap.height
+        x: this.camera.x + ((clientX - rect.left) / rect.width) * this.viewWidth,
+        y: this.camera.y + ((clientY - rect.top) / rect.height) * this.viewHeight
       };
     }
 
     /**
-     * 전체 프레임 렌더링
+     * 전체 프레임 렌더링 (다중 방·복도·문·벽 월드 카메라 투영 + 뷰포트 조명 연출)
      */
     render(
       officeMap,
@@ -79,17 +111,29 @@
       playerDamageSystem = null,
       itemSystem = null
     ) {
+      if (player && officeMap) {
+        this.updateCamera(player, officeMap);
+      }
+
       const ctx = this.ctx;
       ctx.save();
       ctx.setTransform(this.scale * this.dpr, 0, 0, this.scale * this.dpr, 0, 0);
 
-      // 1. 배경 및 쿼터뷰 사무실 바닥
+      // 0. 뷰포트 외곽 암흑 배경 초기화
+      ctx.fillStyle = '#090c15';
+      ctx.fillRect(0, 0, this.viewWidth, this.viewHeight);
+
+      // 월드 좌표계 카메라 변환 시작
+      ctx.save();
+      ctx.translate(-this.camera.x, -this.camera.y);
+
+      // 1. 다중 방·복도 카펫 바닥 및 열린 문(Door) 문턱 렌더링
       this._drawFloor(ctx, officeMap);
 
-      // 2. 북쪽(뒷면) 벽면 및 좌/우 외벽
+      // 2. 방·복도 북쪽(뒷면) 벽면 및 창문/시계/표지판 장식
       this._drawBackAndSideWalls(ctx, officeMap);
 
-      // 3. 임시 무적 테스트 위험 구역, 아이템 바닥 표시, 적 감지/공격 예고 표시, 바닥 그림자 및 조준 방향 표시
+      // 3. 위험 구역, 아이템 바닥 표시, 적 감지/공격 예고 표시, 그림자 및 플레이어 방향 화살표
       if (testHazard) {
         testHazard.renderFloor(ctx);
       }
@@ -104,8 +148,22 @@
         this._drawPlayerDirectionIndicator(ctx, player);
       }
 
-      // 4. 쿼터뷰 Y-정렬 렌더링 (발/바닥 Y좌표 기준으로 앞뒤 원근 순서 결정)
+      // 4. 쿼터뷰 Y-정렬 렌더링 (측면·남쪽 격벽 + 책상/기둥 장애물 + 아이템 + 적 + 플레이어)
       const renderQueue = [];
+
+      if (Array.isArray(officeMap.walls)) {
+        for (let i = 0; i < officeMap.walls.length; i++) {
+          const wall = officeMap.walls[i];
+          if (wall.side === 'north') {
+            continue;
+          }
+          renderQueue.push({
+            kind: 'wall',
+            sortY: wall.y + wall.height,
+            data: wall
+          });
+        }
+      }
 
       for (let i = 0; i < officeMap.obstacles.length; i++) {
         const obs = officeMap.obstacles[i];
@@ -129,7 +187,6 @@
         }
       }
 
-      // 대시 잔상도 Y-정렬 큐에 포함하여 책상/기둥 전후 원근 유지
       if (player.dash && player.dash.afterimages.length > 0) {
         for (let i = 0; i < player.dash.afterimages.length; i++) {
           const ghost = player.dash.afterimages[i];
@@ -195,6 +252,9 @@
       for (let i = 0; i < renderQueue.length; i++) {
         const item = renderQueue[i];
         switch (item.kind) {
+          case 'wall':
+            this._drawStructuralWall(ctx, item.data);
+            break;
           case 'obstacle':
             this._drawObstacle(ctx, item.data);
             break;
@@ -221,7 +281,7 @@
         }
       }
 
-      // 5. 플레이어/적 근접 휘두르기 궤적, 피격 스파크, 플로팅 피해량 수치
+      // 5. 플레이어/적 근접 휘두르기 궤적, 피격 스파크, 플로팅 피해량 및 아이템 피드백
       if (enemySystem) {
         this._drawEnemySlashEffects(ctx, enemySystem);
       }
@@ -240,87 +300,222 @@
         testHazard.renderPopups(ctx);
       }
 
-      // 6. 남쪽(전면) 단면 벽 및 야근 조명 비네팅
-      this._drawForegroundWall(ctx, officeMap);
-      this._drawNightAtmosphere(ctx, officeMap);
+      // 월드 좌표계 종료
+      ctx.restore();
 
-      // 7. 마우스 조준선(크로스헤어) 표시 (사망 시 미표시)
+      // 6. 뷰포트 기준 야근 조명 비네팅 연출
+      this._drawNightAtmosphere(ctx);
+
+      // 7. 마우스 조준선(크로스헤어) 표시 (카메라 보정 후 뷰포트 최상단에 선명하게 표시)
       if (aimWorld && !player.isDead) {
-        this._drawAimCrosshair(ctx, aimWorld, equippedWeaponId);
+        this._drawAimCrosshair(
+          ctx,
+          {
+            x: aimWorld.x - this.camera.x,
+            y: aimWorld.y - this.camera.y
+          },
+          equippedWeaponId
+        );
       }
 
       ctx.restore();
     }
 
+    /**
+     * 모든 복도와 방의 타일 바닥, 러그 매트, 조명 광원, 열린 문턱(Door)을 맵 데이터 기반으로 렌더링
+     */
     _drawFloor(ctx, officeMap) {
-      const { width, height, floorRect, tileWidth, tileHeight, floorMats } = officeMap;
+      const { tileWidth, tileHeight, floorMats } = officeMap;
+      const corridors = Array.isArray(officeMap.corridors) ? officeMap.corridors : [];
+      const rooms = Array.isArray(officeMap.rooms) ? officeMap.rooms : [];
+      const doors = Array.isArray(officeMap.doors) ? officeMap.doors : [];
 
-      // 외곽 어두운 구조체 배경
-      ctx.fillStyle = '#0d101a';
-      ctx.fillRect(0, 0, width, height);
+      // 1. 복도 바닥 먼저 렌더링 후 방 바닥 렌더링
+      for (let i = 0; i < corridors.length; i++) {
+        this._drawTiledSpaceFloor(ctx, corridors[i], tileWidth, tileHeight, true);
+      }
+      for (let i = 0; i < rooms.length; i++) {
+        this._drawTiledSpaceFloor(ctx, rooms[i], tileWidth, tileHeight, false);
+      }
 
-      // 사무실 카펫 바닥 기본색
-      ctx.fillStyle = '#1b2234';
-      ctx.fillRect(floorRect.x, floorRect.y, floorRect.width, floorRect.height);
+      // 2. 방/복도 바닥 매트 및 러그 장식
+      if (Array.isArray(floorMats)) {
+        for (let i = 0; i < floorMats.length; i++) {
+          const mat = floorMats[i];
+          this._fillStrokeRoundRect(
+            ctx,
+            mat.x,
+            mat.y,
+            mat.width,
+            mat.height,
+            6,
+            mat.color,
+            mat.border,
+            2
+          );
+        }
+      }
 
-      // 쿼터뷰 비율(64x48) 카펫 타일 패턴
-      const cols = Math.ceil(floorRect.width / tileWidth);
-      const rows = Math.ceil(floorRect.height / tileHeight);
+      // 3. 방별 은은한 바닥 조명 및 복도 천장등 광원
+      for (let i = 0; i < rooms.length; i++) {
+        const room = rooms[i];
+        if (!Array.isArray(room.lightGlows)) continue;
+        for (let g = 0; g < room.lightGlows.length; g++) {
+          const glow = room.lightGlows[g];
+          this._drawFloorGlow(ctx, glow.x, glow.y, glow.radius, glow.color);
+        }
+      }
+      for (let i = 0; i < corridors.length; i++) {
+        const c = corridors[i];
+        this._drawFloorGlow(
+          ctx,
+          c.x + c.width * 0.5,
+          c.y + c.height * 0.5,
+          Math.max(c.width, c.height) * 0.55,
+          'rgba(148, 163, 184, 0.08)'
+        );
+      }
+
+      // 4. 방과 복도를 연결하는 열린 문(Door) 문턱 및 문틀 프레임 표시
+      for (let i = 0; i < doors.length; i++) {
+        this._drawDoorThreshold(ctx, doors[i]);
+      }
+    }
+
+    _drawTiledSpaceFloor(ctx, space, tileWidth, tileHeight, isCorridor) {
+      const palette = space.floorPalette || {
+        primary: isCorridor ? '#171e2f' : '#1e2639',
+        secondary: isCorridor ? '#141a29' : '#1a2132'
+      };
 
       ctx.save();
       ctx.beginPath();
-      ctx.rect(floorRect.x, floorRect.y, floorRect.width, floorRect.height);
+      ctx.rect(space.x, space.y, space.width, space.height);
       ctx.clip();
 
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          const tx = floorRect.x + c * tileWidth;
-          const ty = floorRect.y + r * tileHeight;
-          const isAlt = (r + c) % 2 === 0;
+      ctx.fillStyle = palette.secondary;
+      ctx.fillRect(space.x, space.y, space.width, space.height);
 
-          ctx.fillStyle = isAlt ? '#1e2639' : '#1a2132';
+      // 월드 좌표에 정렬된 타일 그리드 (방과 복도 경계에서 타일이 자연스럽게 이어짐)
+      const startCol = Math.floor(space.x / tileWidth);
+      const endCol = Math.ceil((space.x + space.width) / tileWidth);
+      const startRow = Math.floor(space.y / tileHeight);
+      const endRow = Math.ceil((space.y + space.height) / tileHeight);
+
+      for (let r = startRow; r < endRow; r++) {
+        for (let c = startCol; c < endCol; c++) {
+          const tx = c * tileWidth;
+          const ty = r * tileHeight;
+          const isAlt = Math.abs(r + c) % 2 === 0;
+          ctx.fillStyle = isAlt ? palette.primary : palette.secondary;
           ctx.fillRect(tx, ty, tileWidth, tileHeight);
         }
       }
 
-      // 타일 그리드 선
-      ctx.strokeStyle = 'rgba(12, 15, 26, 0.45)';
+      ctx.strokeStyle = 'rgba(10, 13, 23, 0.46)';
       ctx.lineWidth = 1;
-      for (let c = 1; c < cols; c++) {
-        const x = floorRect.x + c * tileWidth;
+      for (let c = startCol + 1; c < endCol; c++) {
+        const gx = c * tileWidth;
         ctx.beginPath();
-        ctx.moveTo(x, floorRect.y);
-        ctx.lineTo(x, floorRect.y + floorRect.height);
+        ctx.moveTo(gx, space.y);
+        ctx.lineTo(gx, space.y + space.height);
         ctx.stroke();
       }
-      for (let r = 1; r < rows; r++) {
-        const y = floorRect.y + r * tileHeight;
+      for (let r = startRow + 1; r < endRow; r++) {
+        const gy = r * tileHeight;
         ctx.beginPath();
-        ctx.moveTo(floorRect.x, y);
-        ctx.lineTo(floorRect.x + floorRect.width, y);
+        ctx.moveTo(space.x, gy);
+        ctx.lineTo(space.x + space.width, gy);
         ctx.stroke();
       }
 
-      // 바닥 매트/러그 장식
-      for (let i = 0; i < floorMats.length; i++) {
-        const mat = floorMats[i];
-        this._fillStrokeRoundRect(ctx, mat.x, mat.y, mat.width, mat.height, 6, mat.color, mat.border, 2);
-      }
-
-      // 창가 푸른 달빛 & 스탠드 바닥 은은한 조명
-      this._drawFloorGlow(ctx, 395, 175, 145, 'rgba(90, 140, 230, 0.10)');
-      this._drawFloorGlow(ctx, 985, 175, 155, 'rgba(90, 140, 230, 0.10)');
-      this._drawFloorGlow(ctx, 640, 158, 90, 'rgba(72, 220, 150, 0.08)');
-      this._drawFloorGlow(ctx, 640, 300, 140, 'rgba(255, 200, 110, 0.09)');
-      this._drawFloorGlow(ctx, 275, 535, 130, 'rgba(255, 200, 110, 0.08)');
-      this._drawFloorGlow(ctx, 1005, 300, 130, 'rgba(255, 200, 110, 0.08)');
-
-      // 벽 바로 아래 바닥 그림자
-      const wallShadow = ctx.createLinearGradient(0, floorRect.y, 0, floorRect.y + 26);
-      wallShadow.addColorStop(0, 'rgba(7, 9, 16, 0.55)');
+      // 북쪽 벽 바로 아래 바닥 그림자 그라데이션
+      const shadowDepth = isCorridor ? 18 : 24;
+      const wallShadow = ctx.createLinearGradient(0, space.y, 0, space.y + shadowDepth);
+      wallShadow.addColorStop(0, 'rgba(7, 9, 16, 0.52)');
       wallShadow.addColorStop(1, 'rgba(7, 9, 16, 0)');
       ctx.fillStyle = wallShadow;
-      ctx.fillRect(floorRect.x, floorRect.y, floorRect.width, 26);
+      ctx.fillRect(space.x, space.y, space.width, shadowDepth);
+
+      ctx.restore();
+    }
+
+    /**
+     * 방과 복도 사이의 통과 가능한 문(Door) 바닥 문턱과 좌우 문설주 도형 렌더링
+     */
+    _drawDoorThreshold(ctx, door) {
+      ctx.save();
+
+      if (door.orientation === 'vertical') {
+        // 바닥 금속/슬레이트 문턱 플레이트
+        this._fillStrokeRect(
+          ctx,
+          door.x,
+          door.y + 2,
+          door.width,
+          door.height - 4,
+          '#2b3752',
+          OUTLINE_COLOR,
+          1.8
+        );
+
+        // 중앙 레일 홈
+        ctx.strokeStyle = 'rgba(148, 163, 184, 0.42)';
+        ctx.lineWidth = 1.4;
+        ctx.setLineDash([5, 5]);
+        ctx.beginPath();
+        ctx.moveTo(door.x + door.width * 0.5, door.y + 8);
+        ctx.lineTo(door.x + door.width * 0.5, door.y + door.height - 8);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // 상/하 열린 문틀 포스트(문설주)
+        this._fillStrokeRect(ctx, door.x - 3, door.y - 4, door.width + 6, 8, '#475569', OUTLINE_COLOR, 2);
+        this._fillStrokeRect(
+          ctx,
+          door.x - 3,
+          door.y + door.height - 4,
+          door.width + 6,
+          8,
+          '#475569',
+          OUTLINE_COLOR,
+          2
+        );
+      } else {
+        // 수평 문 바닥 문턱 플레이트
+        this._fillStrokeRect(
+          ctx,
+          door.x + 2,
+          door.y,
+          door.width - 4,
+          door.height,
+          '#2b3752',
+          OUTLINE_COLOR,
+          1.8
+        );
+
+        ctx.strokeStyle = 'rgba(148, 163, 184, 0.42)';
+        ctx.lineWidth = 1.4;
+        ctx.setLineDash([5, 5]);
+        ctx.beginPath();
+        ctx.moveTo(door.x + 8, door.y + door.height * 0.5);
+        ctx.lineTo(door.x + door.width - 8, door.y + door.height * 0.5);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // 좌/우 열린 문틀 포스트(문설주)
+        this._fillStrokeRect(ctx, door.x - 4, door.y - 3, 8, door.height + 6, '#475569', OUTLINE_COLOR, 2);
+        this._fillStrokeRect(
+          ctx,
+          door.x + door.width - 4,
+          door.y - 3,
+          8,
+          door.height + 6,
+          '#475569',
+          OUTLINE_COLOR,
+          2
+        );
+      }
 
       ctx.restore();
     }
@@ -335,62 +530,186 @@
       ctx.fill();
     }
 
+    /**
+     * 각 방과 복도의 북쪽(뒷면) 수직 벽면, 상단 단면 캡, 창문·시계·화이트보드·표지판 렌더링
+     */
     _drawBackAndSideWalls(ctx, officeMap) {
-      const { width, floorRect } = officeMap;
-      const wallTopY = 20;
-      const wallFaceY = 44;
-      const wallBottomY = floorRect.y; // 132
+      const walls = Array.isArray(officeMap.walls) ? officeMap.walls : [];
+      const rooms = Array.isArray(officeMap.rooms) ? officeMap.rooms : [];
+      const roomMap = new Map();
+      for (let i = 0; i < rooms.length; i++) {
+        roomMap.set(rooms[i].id, rooms[i]);
+      }
 
-      // 북쪽 벽 정면(수직 면)
+      // 1. 북쪽 벽 세그먼트(수직 실내 벽면 + 걸레받이 몰딩 + 상단 벽 두께 캡) 렌더링
+      for (let i = 0; i < walls.length; i++) {
+        const wall = walls[i];
+        if (wall.side !== 'north') {
+          continue;
+        }
+
+        const isRoomWall = wall.spaceKind === 'room';
+        const room = roomMap.get(wall.spaceId);
+        const isSupply = room && room.type === 'supply';
+
+        const floorTopY = wall.y + wall.height;
+        const faceHeight = isRoomWall ? 68 : 42;
+        const capHeight = isRoomWall ? 18 : 14;
+        const faceTopY = floorTopY - faceHeight;
+        const capTopY = faceTopY - capHeight;
+
+        const wallFaceColor = isSupply
+          ? '#243542'
+          : isRoomWall
+            ? '#27314a'
+            : '#212a40';
+
+        // 수직 벽 정면
+        this._fillStrokeRect(
+          ctx,
+          wall.x,
+          faceTopY,
+          wall.width,
+          faceHeight,
+          wallFaceColor,
+          OUTLINE_COLOR,
+          2.4
+        );
+
+        // 하단 걸레받이 몰딩
+        this._fillStrokeRect(
+          ctx,
+          wall.x,
+          floorTopY - 9,
+          wall.width,
+          9,
+          '#181f32',
+          OUTLINE_COLOR,
+          1.8
+        );
+
+        // 복도 북쪽 벽에는 소형 비상 유도등 장식 추가
+        if (!isRoomWall && wall.width >= 90) {
+          const lampX = wall.x + wall.width * 0.5;
+          const lampY = faceTopY + 15;
+          this._fillStrokeRoundRect(
+            ctx,
+            lampX - 11,
+            lampY - 4,
+            22,
+            8,
+            3,
+            '#334155',
+            OUTLINE_COLOR,
+            1.6
+          );
+          ctx.fillStyle = '#fde68a';
+          ctx.fillRect(lampX - 7, lampY - 1.5, 14, 3);
+        }
+
+        // 벽 상단 단면 캡
+        this._fillStrokeRect(
+          ctx,
+          wall.x,
+          capTopY,
+          wall.width,
+          capHeight,
+          '#141929',
+          OUTLINE_COLOR,
+          2.4
+        );
+      }
+
+      // 2. 각 방 북쪽 벽 장식(밤하늘 창문, 벽시계, 화이트보드, 보급실 표지판 등) 렌더링
+      for (let i = 0; i < rooms.length; i++) {
+        const room = rooms[i];
+        if (!Array.isArray(room.wallDecor)) continue;
+
+        const faceTopY = room.y - 68;
+        for (let d = 0; d < room.wallDecor.length; d++) {
+          const decor = room.wallDecor[d];
+          const dx = room.x + (decor.offsetX || 0);
+          switch (decor.kind) {
+            case 'window':
+              this._drawNightWindow(ctx, dx, faceTopY + 7, decor.width || 180, 48, Boolean(decor.showMoon));
+              break;
+            case 'clock':
+              this._drawWallClock(ctx, dx, faceTopY + 26, 15);
+              break;
+            case 'whiteboard':
+              this._drawWhiteboard(ctx, dx, faceTopY + 9, decor.width || 96, 44);
+              break;
+            case 'locked_door':
+              this._drawLockedOfficeDoor(ctx, dx, faceTopY + 12, decor.width || 92, 56);
+              break;
+            case 'supply_sign':
+              this._drawSupplyWallSign(ctx, dx, faceTopY + 12, decor.width || 88, 38);
+              break;
+            default:
+              break;
+          }
+        }
+      }
+    }
+
+    /**
+     * 보급 방 북쪽 벽면 의무·보급 구역 표지판 도형 렌더링
+     */
+    _drawSupplyWallSign(ctx, x, y, w, h) {
+      this._fillStrokeRoundRect(ctx, x, y, w, h, 4, '#13262f', OUTLINE_COLOR, 2.2);
+      this._fillStrokeRoundRect(ctx, x + 4, y + 4, w - 8, h - 8, 3, '#1b3844', '#2dd4bf', 1.5);
+
+      // 십자 마크 + 보급 모듈 바 아이콘
+      const cx = x + 22;
+      const cy = y + h * 0.5;
+      ctx.fillStyle = '#4ade80';
+      ctx.fillRect(cx - 3, cy - 8, 6, 16);
+      ctx.fillRect(cx - 8, cy - 3, 16, 6);
+
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillRect(x + 40, cy - 6, w - 52, 4);
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillRect(x + 40, cy + 2, w - 58, 3);
+    }
+
+    /**
+     * 측면·남쪽·모서리 컷어웨이 구조 벽(Wall) 쿼터뷰 입체 렌더링
+     */
+    _drawStructuralWall(ctx, wall) {
+      const z = wall.zHeight ?? 22;
+      const topY = wall.y - z;
+      const frontY = wall.y + wall.height - z;
+
+      // 벽 전면(높이 두께 면)
       this._fillStrokeRect(
         ctx,
-        floorRect.x,
-        wallFaceY,
-        floorRect.width,
-        wallBottomY - wallFaceY,
-        '#27314a',
+        wall.x,
+        frontY,
+        wall.width,
+        z,
+        '#222c45',
         OUTLINE_COLOR,
-        2.5
+        2.2
       );
 
-      // 벽 하단 걸레받이 몰딩
+      // 벽 상단 단면 캡
       this._fillStrokeRect(
         ctx,
-        floorRect.x,
-        wallBottomY - 10,
-        floorRect.width,
-        10,
-        '#192033',
+        wall.x,
+        topY,
+        wall.width,
+        wall.height,
+        '#141929',
         OUTLINE_COLOR,
-        2
+        2.2
       );
 
-      // 밤하늘 창문 (좌/우 - 좌측 HUD 패널과 겹치지 않도록 배치)
-      this._drawNightWindow(ctx, 298, 54, 200, 58, true);
-      this._drawNightWindow(ctx, 875, 54, 210, 58, false);
-
-      // 벽시계 (야근 시간 11:55 표현)
-      this._drawWallClock(ctx, 542, 78, 16);
-
-      // 중앙 잠긴 비상구 출입문 (배경 연출용)
-      this._drawLockedOfficeDoor(ctx, 592, 58, 96, wallBottomY - 58);
-
-      // 회의용 화이트보드
-      this._drawWhiteboard(ctx, 740, 58, 96, 50);
-
-      // 북쪽 벽 상단 단면(쿼터뷰 벽 두께 표현)
-      this._fillStrokeRect(ctx, 16, wallTopY, width - 32, wallFaceY - wallTopY, '#141929', OUTLINE_COLOR, 2.5);
-
-      // 좌측 외벽 단면
-      this._fillStrokeRect(ctx, 16, wallTopY, floorRect.x - 16, 764 - wallTopY, '#141929', OUTLINE_COLOR, 2.5);
-      ctx.fillStyle = '#1f273d';
-      ctx.fillRect(floorRect.x - 8, wallFaceY, 8, 760 - wallFaceY);
-
-      // 우측 외벽 단면
-      const rightWallX = floorRect.x + floorRect.width;
-      this._fillStrokeRect(ctx, rightWallX, wallTopY, width - 16 - rightWallX, 764 - wallTopY, '#141929', OUTLINE_COLOR, 2.5);
-      ctx.fillStyle = '#1f273d';
-      ctx.fillRect(rightWallX, wallFaceY, 8, 760 - wallFaceY);
+      // 상단 단면 안쪽 하이라이트 림
+      if (wall.width > 8 && wall.height > 8) {
+        ctx.strokeStyle = 'rgba(71, 91, 135, 0.45)';
+        ctx.lineWidth = 1.4;
+        ctx.strokeRect(wall.x + 2, topY + 2, wall.width - 4, wall.height - 4);
+      }
     }
 
     _drawNightWindow(ctx, x, y, w, h, showMoon) {
@@ -404,21 +723,21 @@
 
       // 야경 빌딩 실루엣
       ctx.fillStyle = '#162340';
-      ctx.fillRect(x + 12, y + 24, 34, h - 26);
-      ctx.fillRect(x + 54, y + 16, 42, h - 18);
-      ctx.fillRect(x + 132, y + 20, 38, h - 22);
-      ctx.fillRect(x + 176, y + 28, 30, h - 30);
+      ctx.fillRect(x + 12, y + 18, 30, h - 20);
+      ctx.fillRect(x + 50, y + 12, 38, h - 14);
+      ctx.fillRect(x + 120, y + 16, 34, h - 18);
+      ctx.fillRect(x + 162, y + 22, 28, h - 24);
 
       // 맞은편 빌딩 야근 불빛
       ctx.fillStyle = '#fbbf24';
-      ctx.fillRect(x + 62, y + 26, 7, 5);
-      ctx.fillRect(x + 75, y + 36, 7, 5);
-      ctx.fillRect(x + 142, y + 30, 7, 5);
+      ctx.fillRect(x + 58, y + 20, 6, 4);
+      ctx.fillRect(x + 70, y + 29, 6, 4);
+      ctx.fillRect(x + 128, y + 24, 6, 4);
 
       if (showMoon) {
         ctx.fillStyle = '#fde68a';
         ctx.beginPath();
-        ctx.arc(x + 114, y + 19, 7, 0, Math.PI * 2);
+        ctx.arc(x + 104, y + 17, 6.5, 0, Math.PI * 2);
         ctx.fill();
       }
 
@@ -426,7 +745,7 @@
 
       // 창문 세로 프레임 분할
       ctx.strokeStyle = '#1e273d';
-      ctx.lineWidth = 3;
+      ctx.lineWidth = 2.6;
       ctx.beginPath();
       ctx.moveTo(x + w / 3, y);
       ctx.lineTo(x + w / 3, y + h);
@@ -435,7 +754,7 @@
       ctx.stroke();
 
       // 상단 블라인드
-      this._fillStrokeRect(ctx, x + 2, y + 2, w - 4, 10, '#384666', OUTLINE_COLOR, 1.5);
+      this._fillStrokeRect(ctx, x + 2, y + 2, w - 4, 9, '#384666', OUTLINE_COLOR, 1.5);
     }
 
     _drawWallClock(ctx, cx, cy, r) {
@@ -452,9 +771,9 @@
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(cx, cy);
-      ctx.lineTo(cx - 3, cy - 7);
+      ctx.lineTo(cx - 3, cy - 6);
       ctx.moveTo(cx, cy);
-      ctx.lineTo(cx - 2, cy - 11);
+      ctx.lineTo(cx - 1.8, cy - 10);
       ctx.stroke();
 
       ctx.fillStyle = '#ef4444';
@@ -465,10 +784,10 @@
 
     _drawLockedOfficeDoor(ctx, x, y, w, h) {
       // 비상구 사인
-      this._fillStrokeRoundRect(ctx, x + 26, y - 11, 44, 9, 2, '#10b981', OUTLINE_COLOR, 1.8);
+      this._fillStrokeRoundRect(ctx, x + w * 0.5 - 20, y - 10, 40, 8, 2, '#10b981', OUTLINE_COLOR, 1.6);
 
-      // 양개형 출입문
-      this._fillStrokeRect(ctx, x, y, w, h, '#303b57', OUTLINE_COLOR, 2.5);
+      // 양개형 출입문 (벽면 배경 장식)
+      this._fillStrokeRect(ctx, x, y, w, h, '#303b57', OUTLINE_COLOR, 2.4);
       ctx.beginPath();
       ctx.moveTo(x + w / 2, y);
       ctx.lineTo(x + w / 2, y + h);
@@ -477,13 +796,13 @@
       ctx.stroke();
 
       // 문 유리창
-      this._fillStrokeRect(ctx, x + 12, y + 10, 24, 28, '#131d33', OUTLINE_COLOR, 2);
-      this._fillStrokeRect(ctx, x + w - 36, y + 10, 24, 28, '#131d33', OUTLINE_COLOR, 2);
+      this._fillStrokeRect(ctx, x + 10, y + 8, 22, 22, '#131d33', OUTLINE_COLOR, 1.8);
+      this._fillStrokeRect(ctx, x + w - 32, y + 8, 22, 22, '#131d33', OUTLINE_COLOR, 1.8);
 
       // 손잡이
       ctx.fillStyle = '#94a3b8';
-      ctx.fillRect(x + w / 2 - 7, y + 44, 4, 10);
-      ctx.fillRect(x + w / 2 + 3, y + 44, 4, 10);
+      ctx.fillRect(x + w / 2 - 7, y + 34, 4, 9);
+      ctx.fillRect(x + w / 2 + 3, y + 34, 4, 9);
     }
 
     _drawWhiteboard(ctx, x, y, w, h) {
@@ -493,40 +812,31 @@
       ctx.strokeStyle = '#3b82f6';
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(x + 12, y + 34);
-      ctx.lineTo(x + 28, y + 22);
-      ctx.lineTo(x + 44, y + 28);
-      ctx.lineTo(x + 60, y + 14);
+      ctx.moveTo(x + 12, y + h - 12);
+      ctx.lineTo(x + 28, y + h - 22);
+      ctx.lineTo(x + 44, y + h - 17);
+      ctx.lineTo(x + 60, y + 12);
       ctx.stroke();
 
       ctx.fillStyle = '#facc15';
-      ctx.fillRect(x + 70, y + 12, 14, 14);
+      ctx.fillRect(x + w - 24, y + 9, 13, 12);
       ctx.fillStyle = '#f87171';
-      ctx.fillRect(x + 70, y + 29, 14, 12);
+      ctx.fillRect(x + w - 24, y + 24, 13, 11);
     }
 
-    _drawForegroundWall(ctx, officeMap) {
-      const { width, floorRect } = officeMap;
-      const frontWallY = floorRect.y + floorRect.height; // 760
-      this._fillStrokeRect(ctx, 16, frontWallY, width - 32, 24, '#141929', OUTLINE_COLOR, 2.5);
-
-      // 상단 하이라이트 림
-      ctx.fillStyle = '#252f4a';
-      ctx.fillRect(floorRect.x, frontWallY, floorRect.width, 4);
-    }
-
-    _drawNightAtmosphere(ctx, officeMap) {
-      const { width, height } = officeMap;
+    _drawNightAtmosphere(ctx) {
+      const width = this.viewWidth;
+      const height = this.viewHeight;
       const vignette = ctx.createRadialGradient(
         width * 0.5,
         height * 0.5,
         height * 0.34,
         width * 0.5,
         height * 0.5,
-        width * 0.65
+        width * 0.68
       );
       vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
-      vignette.addColorStop(1, 'rgba(6, 8, 15, 0.38)');
+      vignette.addColorStop(1, 'rgba(5, 7, 14, 0.42)');
       ctx.fillStyle = vignette;
       ctx.fillRect(0, 0, width, height);
     }

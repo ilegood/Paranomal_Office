@@ -227,23 +227,29 @@
     }
 
     /**
-     * 테스트 사무실 맵의 기본 적 1마리 초기 배치 데이터 반환
+     * 테스트 사무실 맵의 전투 방 기본 적 초기 배치 데이터 반환
      */
-    static createDefaultEnemies(playerBaseSpeed = 260) {
-      return [
-        {
-          id: 'enemy-office-1',
-          x: 1005,
-          y: 415,
-          playerBaseSpeed,
-          maxHp: ENEMY_CONFIG.maxHp,
-          detectionRange: ENEMY_CONFIG.detectionRange,
-          attackRange: ENEMY_CONFIG.attackRange,
-          attackDamage: ENEMY_CONFIG.attackDamage,
-          attackCooldown: ENEMY_CONFIG.attackCooldown,
-          attackWindupDuration: ENEMY_CONFIG.attackWindupDuration
-        }
-      ];
+    static createDefaultEnemies(playerBaseSpeed = 260, officeMap = null) {
+      const spawns =
+        officeMap && Array.isArray(officeMap.enemySpawns) && officeMap.enemySpawns.length > 0
+          ? officeMap.enemySpawns
+          : [
+              { id: 'enemy-combat-1', x: 1200, y: 910 },
+              { id: 'enemy-combat-2', x: 2055, y: 910 }
+            ];
+
+      return spawns.map((spawn, idx) => ({
+        id: spawn.id ?? `enemy-office-${idx + 1}`,
+        x: spawn.x,
+        y: spawn.y,
+        playerBaseSpeed,
+        maxHp: spawn.maxHp ?? ENEMY_CONFIG.maxHp,
+        detectionRange: spawn.detectionRange ?? ENEMY_CONFIG.detectionRange,
+        attackRange: spawn.attackRange ?? ENEMY_CONFIG.attackRange,
+        attackDamage: spawn.attackDamage ?? ENEMY_CONFIG.attackDamage,
+        attackCooldown: spawn.attackCooldown ?? ENEMY_CONFIG.attackCooldown,
+        attackWindupDuration: spawn.attackWindupDuration ?? ENEMY_CONFIG.attackWindupDuration
+      }));
     }
 
     /**
@@ -300,6 +306,12 @@
           continue;
         }
 
+        // 다른 생존 적들도 원형 충돌 대상에 포함하여 다중 적 추적 시 서로 겹치지 않도록 유지
+        const entityBlockers = [
+          ...staticBlockers,
+          ...this.enemies.filter((other) => other !== enemy && other.alive && other.state !== ENEMY_STATES.DEAD)
+        ];
+
         // 3. 플레이어가 사망한 경우: 공격 및 추적을 즉시 중단하고 대기/순찰 유지
         if (isPlayerDead) {
           if (enemy.state === ENEMY_STATES.ATTACK || enemy.state === ENEMY_STATES.CHASE) {
@@ -310,16 +322,23 @@
           if (enemy.state === ENEMY_STATES.IDLE) {
             this._updateIdleState(enemy, dt);
           } else if (enemy.state === ENEMY_STATES.PATROL) {
-            this._updatePatrolState(enemy, dt, null, officeMap, staticBlockers);
+            this._updatePatrolState(enemy, dt, null, officeMap, entityBlockers);
           }
           continue;
         }
 
-        // 4. 플레이어와의 현재 거리 및 감지 여부 계산
+        // 4. 플레이어와의 현재 거리 및 방 격벽 차폐 여부 계산 (책상/기둥은 시야 허용, 고체 벽 너머만 차단)
         const dxToPlayer = player.position.x - enemy.position.x;
         const dyToPlayer = player.position.y - enemy.position.y;
         const distToPlayer = Math.hypot(dxToPlayer, dyToPlayer);
-        const detectedNow = distToPlayer <= enemy.detectionRange;
+        const wallBlocked = this._isBlockedByWall(
+          enemy.position.x,
+          enemy.position.y,
+          player.position.x,
+          player.position.y,
+          officeMap
+        );
+        const detectedNow = distToPlayer <= enemy.detectionRange && !wallBlocked;
 
         enemy.isPlayerInRange = detectedNow;
         if (detectedNow) {
@@ -332,7 +351,7 @@
 
         // 5. 공격(Attack) 진행 중에는 즉시 Chase로 덮어쓰지 않고 공격 동작을 끝까지 수행
         if (enemy.state === ENEMY_STATES.ATTACK) {
-          this._updateAttackState(enemy, dt, player, playerDamageSystem);
+          this._updateAttackState(enemy, dt, player, playerDamageSystem, officeMap);
           continue;
         }
 
@@ -354,7 +373,7 @@
             this._updateIdleState(enemy, dt);
             break;
           case ENEMY_STATES.PATROL:
-            this._updatePatrolState(enemy, dt, player, officeMap, staticBlockers);
+            this._updatePatrolState(enemy, dt, player, officeMap, entityBlockers);
             break;
           case ENEMY_STATES.CHASE:
             this._updateChaseState(
@@ -363,7 +382,7 @@
               player,
               distToPlayer,
               officeMap,
-              staticBlockers
+              entityBlockers
             );
             break;
           default:
@@ -397,7 +416,7 @@
     /**
      * Attack 상태 업데이트: 준비 시간(0.35초) 후 단 1회 범위 판정 수행 -> 짧은 후딜 후 거리 재확인
      */
-    _updateAttackState(enemy, dt, player, playerDamageSystem) {
+    _updateAttackState(enemy, dt, player, playerDamageSystem, officeMap = null) {
       // 공격 중에는 이동하지 않음 (추적 이동과 공격 애니메이션 중복 방지)
       enemy.velocity.x = 0;
       enemy.velocity.y = 0;
@@ -414,13 +433,13 @@
 
         // 공격 준비 완료 시점에 단 한 번만 공격 판정 및 쿨다운 적용
         if (!enemy.attack.hasAppliedStrike) {
-          this._executeMeleeStrikeOnce(enemy, player, playerDamageSystem);
+          this._executeMeleeStrikeOnce(enemy, player, playerDamageSystem, officeMap);
         }
 
         enemy.attack.phase = 'recovery';
         enemy.attack.timer = Math.max(0, enemy.attack.recoveryDuration - overflowDt);
         if (enemy.attack.timer <= 0) {
-          this._finishAttackAndTransition(enemy, player);
+          this._finishAttackAndTransition(enemy, player, officeMap);
         }
         return;
       }
@@ -428,17 +447,17 @@
       if (enemy.attack.phase === 'recovery') {
         enemy.attack.timer -= dt;
         if (enemy.attack.timer <= 0) {
-          this._finishAttackAndTransition(enemy, player);
+          this._finishAttackAndTransition(enemy, player, officeMap);
         }
       } else {
-        this._finishAttackAndTransition(enemy, player);
+        this._finishAttackAndTransition(enemy, player, officeMap);
       }
     }
 
     /**
      * 실제 공격 판정 시점에 플레이어가 공격 사거리(45px) 및 공격 방향 범위 안에 있을 때만 1회 피해 적용
      */
-    _executeMeleeStrikeOnce(enemy, player, playerDamageSystem) {
+    _executeMeleeStrikeOnce(enemy, player, playerDamageSystem, officeMap = null) {
       enemy.attack.hasAppliedStrike = true;
       enemy.attack.cooldownRemaining = enemy.attack.cooldownTotal;
       enemy.attack.slashTimer = enemy.attack.slashDuration;
@@ -451,8 +470,19 @@
       const dy = player.position.y - enemy.position.y;
       const dist = Math.hypot(dx, dy);
 
-      // 1. 공격 사거리(45px) 바깥으로 벗어났다면 피해 미적용
+      // 1. 공격 사거리(45px) 바깥이거나 벽 너머라면 피해 미적용
       if (dist > enemy.attackRange) {
+        return false;
+      }
+      if (
+        this._isBlockedByWall(
+          enemy.position.x,
+          enemy.position.y,
+          player.position.x,
+          player.position.y,
+          officeMap
+        )
+      ) {
         return false;
       }
 
@@ -486,7 +516,7 @@
     /**
      * 공격 동작 종료 후 플레이어와의 거리를 다시 확인하여 Attack / Chase / Idle 상태로 전환
      */
-    _finishAttackAndTransition(enemy, player) {
+    _finishAttackAndTransition(enemy, player, officeMap = null) {
       enemy.attack.phase = 'none';
       enemy.attack.timer = 0;
 
@@ -498,10 +528,17 @@
       const dx = player.position.x - enemy.position.x;
       const dy = player.position.y - enemy.position.y;
       const dist = Math.hypot(dx, dy);
+      const wallBlocked = this._isBlockedByWall(
+        enemy.position.x,
+        enemy.position.y,
+        player.position.x,
+        player.position.y,
+        officeMap
+      );
 
-      if (dist <= enemy.attackRange && enemy.attack.cooldownRemaining <= 0) {
+      if (dist <= enemy.attackRange && !wallBlocked && enemy.attack.cooldownRemaining <= 0) {
         this._startAttack(enemy, player);
-      } else if (dist <= enemy.detectionRange) {
+      } else if (dist <= enemy.detectionRange && !wallBlocked) {
         enemy.state = ENEMY_STATES.CHASE;
         enemy.isPlayerInRange = true;
         enemy.lastKnownPlayerPos = { x: player.position.x, y: player.position.y };
@@ -786,7 +823,8 @@
           targetY,
           nearestRect,
           obstacles,
-          bounds
+          bounds,
+          officeMap
         );
         if (waypoint) {
           const wx = waypoint.x - ex;
@@ -862,7 +900,28 @@
       return tMin;
     }
 
-    _pickReachableCornerWaypoint(enemy, targetX, targetY, rect, obstacles, bounds) {
+    _isBlockedByWall(x0, y0, x1, y1, officeMap) {
+      if (!officeMap || typeof officeMap.getWalls !== 'function') {
+        return false;
+      }
+      const walls = officeMap.getWalls();
+      for (let i = 0; i < walls.length; i++) {
+        if (this._segmentExpandedRectHitT(x0, y0, x1, y1, walls[i], 0) !== null) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    _pickReachableCornerWaypoint(
+      enemy,
+      targetX,
+      targetY,
+      rect,
+      obstacles,
+      bounds,
+      officeMap = null
+    ) {
       const r = enemy.colliderRadius;
       const ex = enemy.position.x;
       const ey = enemy.position.y;
@@ -883,6 +942,14 @@
         const c = corners[i];
         const cx = this._clamp(c.x, bounds.minX, bounds.maxX);
         const cy = this._clamp(c.y, bounds.minY, bounds.maxY);
+
+        if (
+          officeMap &&
+          typeof officeMap.isInsideWalkableArea === 'function' &&
+          !officeMap.isInsideWalkableArea(cx, cy, Math.max(2, r - 2))
+        ) {
+          continue;
+        }
 
         const distToCorner = Math.hypot(cx - ex, cy - ey);
         if (distToCorner < 4) {

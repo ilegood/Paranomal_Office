@@ -258,22 +258,30 @@
     }
 
     /**
-     * 테스트 사무실 맵 고정 배치 아이템 목록 반환 (회복 아이템 1개, 무기 강화 아이템 1개)
+     * 탐험 사무실 맵 보급 방 고정 배치 아이템 목록 반환 (회복 아이템 1개, 무기 강화 아이템 1개)
      */
-    static createDefaultMapItems() {
+    static createDefaultMapItems(officeMap = null) {
+      if (
+        officeMap &&
+        Array.isArray(officeMap.itemSpawns) &&
+        officeMap.itemSpawns.length > 0
+      ) {
+        return officeMap.itemSpawns.map((spawn) => ({ ...spawn }));
+      }
+
       return [
         {
           id: 'item-medkit-1',
           configId: 'medkit',
-          x: 285,
-          y: 415,
+          x: 1095,
+          y: 310,
           initialPhase: 0
         },
         {
           id: 'item-upgrade-1',
           configId: 'weapon_upgrade_module',
-          x: 640,
-          y: 202,
+          x: 1305,
+          y: 310,
           initialPhase: 1.4
         }
       ];
