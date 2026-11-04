@@ -1,0 +1,229 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: #090b12;
+  color: #f1f4fb;
+  font-family: "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, -apple-system, sans-serif;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#app {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at center, #141929 0%, #090b12 100%);
+  padding: 8px;
+}
+
+#game-stage {
+  position: relative;
+  border: 3px solid #1e253b;
+  border-radius: 12px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.75);
+  overflow: hidden;
+  background-color: #121624;
+}
+
+#game-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* 기본 HUD 오버레이 */
+#hud {
+  position: absolute;
+  inset: 0;
+  padding: clamp(10px, 1.6vw, 18px);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.hud-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.hud-bottom {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-start;
+}
+
+.hud-card {
+  background: rgba(17, 21, 34, 0.86);
+  border: 2.5px solid #2b3553;
+  border-radius: 10px;
+  box-shadow: 0 4px 0 rgba(8, 10, 18, 0.85);
+  backdrop-filter: blur(4px);
+}
+
+/* 제목 및 체력 패널 */
+.hud-status-panel {
+  padding: 8px 13px;
+  min-width: clamp(200px, 20vw, 252px);
+}
+
+.game-title-group {
+  margin-bottom: 6px;
+  padding-bottom: 5px;
+  border-bottom: 1.5px solid rgba(92, 110, 158, 0.28);
+}
+
+.game-title {
+  font-size: clamp(14px, 1.35vw, 18px);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #f8fafc;
+  text-shadow: 0 2px 0 #0b0e17;
+}
+
+.game-subtitle {
+  font-size: clamp(10px, 0.85vw, 11.5px);
+  font-weight: 600;
+  color: #93a4c8;
+  margin-top: 1px;
+}
+
+.hp-container {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.hp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: clamp(11px, 0.95vw, 13px);
+  font-weight: 700;
+}
+
+.hp-label {
+  color: #cbd5e1;
+}
+
+.hp-value {
+  color: #ffffff;
+  font-variant-numeric: tabular-nums;
+}
+
+.hp-bar-track {
+  width: 100%;
+  height: 14px;
+  background: #0d101b;
+  border: 2px solid #090b12;
+  border-radius: 7px;
+  overflow: hidden;
+  padding: 1px;
+}
+
+.hp-bar-fill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(180deg, #ff6b81 0%, #e63950 55%, #b82339 100%);
+  border-radius: 4px;
+  transition: width 0.12s ease-out;
+  position: relative;
+}
+
+.hp-bar-fill::after {
+  content: "";
+  position: absolute;
+  top: 1px;
+  left: 3px;
+  right: 3px;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.35);
+}
+
+/* 프로토타입 배지 */
+.prototype-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  font-size: clamp(10.5px, 0.9vw, 12.5px);
+  font-weight: 700;
+  color: #fde68a;
+  border-color: #4c4328;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #fbbf24;
+  box-shadow: 0 0 8px rgba(251, 191, 36, 0.8);
+  flex-shrink: 0;
+}
+
+/* 조작 안내 */
+.controls-guide {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 13px;
+}
+
+.keycap-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.keycap-row {
+  display: flex;
+  gap: 3px;
+}
+
+.keycap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 20px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  color: #dbe4f5;
+  background: #232c45;
+  border: 1.5px solid #485882;
+  border-bottom-width: 3px;
+  border-radius: 4px;
+  transition: transform 0.05s ease, background-color 0.05s ease, color 0.05s ease;
+}
+
+.keycap.is-pressed {
+  background: #f59e0b;
+  border-color: #b45309;
+  color: #111522;
+  transform: translateY(1px);
+}
+
+.controls-label {
+  font-size: clamp(11.5px, 0.95vw, 13px);
+  color: #dbe4f5;
+}
+
+.controls-label strong {
+  color: #fbbf24;
+  font-weight: 800;
+}

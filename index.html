@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>야근은 괴담과 함께 (Overtime: Paranormal Office)</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main id="app">
+    <div id="game-stage">
+      <canvas id="game-canvas" aria-label="야근은 괴담과 함께 게임 화면"></canvas>
+
+      <!-- 기본 UI 오버레이 (Phase 1 필수 요소만 구성) -->
+      <div id="hud" aria-live="polite">
+        <div class="hud-top">
+          <!-- 게임 제목 및 플레이어 체력 표시 -->
+          <section class="hud-card hud-status-panel">
+            <header class="game-title-group">
+              <h1 class="game-title">야근은 괴담과 함께</h1>
+              <p class="game-subtitle">Overtime: Paranormal Office</p>
+            </header>
+
+            <div class="hp-container" role="region" aria-label="플레이어 체력">
+              <div class="hp-header">
+                <span class="hp-label">체력 (HP)</span>
+                <span id="hp-text" class="hp-value">100 / 100</span>
+              </div>
+              <div class="hp-bar-track">
+                <div id="hp-bar-fill" class="hp-bar-fill" style="width: 100%;"></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- 프로토타입 상태 표시 -->
+          <aside class="hud-card prototype-badge">
+            <span class="status-dot" aria-hidden="true"></span>
+            <span class="prototype-text">PROTOTYPE · Phase 1 (전투 시스템 검증용 · 기본 이동)</span>
+          </aside>
+        </div>
+
+        <div class="hud-bottom">
+          <!-- 조작 안내: WASD 이동 -->
+          <div class="hud-card controls-guide" aria-label="조작 안내">
+            <div class="keycap-group" aria-hidden="true">
+              <kbd id="key-w" class="keycap">W</kbd>
+              <div class="keycap-row">
+                <kbd id="key-a" class="keycap">A</kbd>
+                <kbd id="key-s" class="keycap">S</kbd>
+                <kbd id="key-d" class="keycap">D</kbd>
+              </div>
+            </div>
+            <span class="controls-label"><strong>WASD</strong> 이동</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- 로컬 파일(file://)에서도 별도 서버 없이 실행되도록 순차 스크립트로 로드 -->
+  <script src="js/input.js"></script>
+  <script src="js/map.js"></script>
+  <script src="js/player.js"></script>
+  <script src="js/movement.js"></script>
+  <script src="js/renderer.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/game.js"></script>
+</body>
+</html>
+
