@@ -8,8 +8,13 @@
    */
   class UIManager {
     constructor() {
+      this.statusPanelEl = document.querySelector('.hud-status-panel');
       this.hpTextEl = document.getElementById('hp-text');
       this.hpBarFillEl = document.getElementById('hp-bar-fill');
+
+      // 게임 오버 UI 요소
+      this.gameOverOverlayEl = document.getElementById('game-over-overlay');
+      this.restartBtnEl = document.getElementById('restart-btn');
 
       this.keyEls = {
         up: document.getElementById('key-w'),
@@ -53,13 +58,42 @@
       this._lastUsesAmmo = null;
       this._lastCooldownText = null;
       this._lastCooldownPercent = null;
+      this._lastHurtState = false;
+      this._lastGameOver = false;
     }
 
     /**
-     * 플레이어의 체력, 입력 상태, 무기/공격 상태, 대시 상태를 UI에 반영
+     * 재시작 버튼 클릭 핸들러 바인딩
      */
-    update(player, inputState, combatUIState = null, dashUIState = null) {
-      this._syncHealth(player.hp, player.maxHp);
+    bindRestart(onRestart) {
+      if (!this.restartBtnEl || typeof onRestart !== 'function') {
+        return;
+      }
+      this.restartBtnEl.addEventListener('click', () => {
+        onRestart();
+      });
+    }
+
+    /**
+     * 게임 오버 오버레이 표시 여부 제어
+     */
+    setGameOver(isGameOver) {
+      const next = Boolean(isGameOver);
+      if (next === this._lastGameOver && this.gameOverOverlayEl) {
+        return;
+      }
+      this._lastGameOver = next;
+      if (this.gameOverOverlayEl) {
+        this.gameOverOverlayEl.hidden = !next;
+      }
+    }
+
+    /**
+     * 플레이어의 체력, 입력 상태, 무기/공격 상태, 대시 상태 및 사망(게임 오버) 여부를 UI에 반영
+     */
+    update(player, inputState, combatUIState = null, dashUIState = null, isGameOver = false) {
+      this._syncHealth(player.hp, player.maxHp, player.hurtFlashTimer > 0);
+      this.setGameOver(isGameOver || Boolean(player.isDead));
       if (inputState) {
         this._syncKeys(inputState);
       }
@@ -72,7 +106,13 @@
       }
     }
 
-    _syncHealth(hp, maxHp) {
+    _syncHealth(hp, maxHp, isHurt = false) {
+      if (isHurt !== this._lastHurtState) {
+        this._lastHurtState = isHurt;
+        if (this.statusPanelEl) {
+          this.statusPanelEl.classList.toggle('is-hurt', isHurt);
+        }
+      }
       const safeMax = Math.max(1, maxHp);
       const safeHp = Math.max(0, Math.min(safeMax, hp));
 

@@ -4,17 +4,18 @@
   const PO = (global.PO = global.PO || {});
 
   /**
-   * 적 AI 상태 상수 정의
+   * 적 AI 및 전투 상태 상수 정의
    */
   const ENEMY_STATES = Object.freeze({
     IDLE: 'Idle',
     PATROL: 'Patrol',
     CHASE: 'Chase',
+    ATTACK: 'Attack',
     DEAD: 'Dead'
   });
 
   /**
-   * 기본 적 밸런스 및 AI 동작 설정값 (추후 조정 용이하도록 별도 상수 객체로 관리)
+   * 기본 적 밸런스, AI 추적 및 근접 공격 설정값 (추후 조정 용이하도록 별도 상수 객체로 관리)
    */
   const ENEMY_CONFIG = {
     maxHp: 100, // 적 기본 체력: 100
@@ -23,7 +24,16 @@
     patrolSpeedRatio: 0.6, // 순찰 이동 시 속도 비율
     detectionRange: 250, // 플레이어 감지 범위: 약 250px
     colliderRadius: 17, // 바닥 원형 충돌 반경 (px)
-    chaseStopDistance: 37, // 플레이어와 겹침·떨림 방지 정지 거리 (16 + 17 + 4)
+    chaseStopDistance: 38, // 플레이어와 겹침·떨림 방지 정지 거리 (사거리 45px 안쪽)
+
+    // Phase 5: 적 기본 근접 공격 설정값
+    attackRange: 45, // 공격 사거리: 약 45px
+    attackDamage: 15, // 공격 피해량: 15
+    attackCooldown: 1.2, // 공격 쿨다운: 1.2초
+    attackWindupDuration: 0.35, // 공격 준비 시간: 약 0.35초
+    attackRecoveryDuration: 0.16, // 공격 판정 직후 짧은 후딜레이 시간 (초)
+    attackArcDegrees: 120, // 공격 방향 부채꼴 각도 (도)
+
     lostSightChaseDuration: 2.0, // 감지 이탈 후 마지막 발견 위치 추적 유지 시간 (초)
     arrivalThreshold: 8, // 목표 지점(순찰/마지막 발견 위치) 도착 판정 반경 (px)
     patrolDistance: 56, // 제자리 주변 짧은 순찰 거리 (px)
@@ -49,7 +59,7 @@
         y: config.y ?? 415
       };
 
-      // 체력 및 이동/감지 수치
+      // 체력 및 이동/감지/공격 수치
       this.maxHp = config.maxHp ?? ENEMY_CONFIG.maxHp;
       this.hp = config.hp ?? this.maxHp;
       this.speed =
@@ -59,12 +69,18 @@
           : ENEMY_CONFIG.moveSpeed);
       this.detectionRange = config.detectionRange ?? ENEMY_CONFIG.detectionRange;
 
-      // 충돌 반경 (MovementSystem 및 CombatSystem 공통 호환을 위해 두 속성 동기화)
+      // 충돌 반경 및 정지 거리
       this.colliderRadius = config.colliderRadius ?? ENEMY_CONFIG.colliderRadius;
       this.radius = this.colliderRadius;
       this.chaseStopDistance = config.chaseStopDistance ?? ENEMY_CONFIG.chaseStopDistance;
 
-      // 현재 AI 상태 (Idle, Patrol, Chase, Dead)
+      // 근접 공격 속성
+      this.attackRange = config.attackRange ?? ENEMY_CONFIG.attackRange;
+      this.attackDamage = config.attackDamage ?? ENEMY_CONFIG.attackDamage;
+      const arcDeg = config.attackArcDegrees ?? ENEMY_CONFIG.attackArcDegrees;
+      this.attackArcRad = (arcDeg * Math.PI) / 180;
+
+      // 현재 AI 상태 (Idle, Patrol, Chase, Attack, Dead)
       this.state = config.initialState ?? ENEMY_STATES.IDLE;
       this.alive = this.hp > 0 && this.state !== ENEMY_STATES.DEAD;
       this.shouldRemove = false;
@@ -99,9 +115,21 @@
       this.lostSightChaseTimer = 0;
       this.alertTimer = 0;
 
-      // 장애물 우회 방향 일관성 유지를 위한 단기 회피 상태
-      this.avoidSign = 1;
-      this.avoidCommitTimer = 0;
+      // 근접 공격(Attack) 준비·판정·쿨다운 상태 데이터
+      this.attack = {
+        phase: 'none', // 'none' | 'windup' | 'recovery'
+        timer: 0,
+        windupDuration: config.attackWindupDuration ?? ENEMY_CONFIG.attackWindupDuration,
+        recoveryDuration: config.attackRecoveryDuration ?? ENEMY_CONFIG.attackRecoveryDuration,
+        cooldownRemaining: 0,
+        cooldownTotal: config.attackCooldown ?? ENEMY_CONFIG.attackCooldown,
+        aimAngle: Math.PI,
+        aimDirX: -1,
+        aimDirY: 0,
+        hasAppliedStrike: false,
+        slashTimer: 0,
+        slashDuration: 0.18
+      };
 
       // 피격 및 사망 연출 타이머
       this.hitFlashTimer = 0;
@@ -134,6 +162,16 @@
     }
 
     /**
+     * 진행 중인 공격 동작을 즉시 취소한다. (적 사망 또는 플레이어 사망 시 호출)
+     */
+    cancelAttack() {
+      this.attack.phase = 'none';
+      this.attack.timer = 0;
+      this.attack.hasAppliedStrike = true;
+      this.attack.slashTimer = 0;
+    }
+
+    /**
      * 공격 시스템으로부터 피해를 받을 때 호출된다.
      */
     takeDamage(amount, hitDirX = 0) {
@@ -155,7 +193,7 @@
     }
 
     /**
-     * 체력이 0 이하가 되었을 때 즉시 Dead 상태로 전환하고 추적/충돌을 비활성화한다.
+     * 체력이 0 이하가 되었을 때 즉시 Dead 상태로 전환하고 진행 중이던 추적/공격/충돌을 중단한다.
      */
     enterDeadState() {
       this.hp = 0;
@@ -167,6 +205,7 @@
       this.isPlayerInRange = false;
       this.lastKnownPlayerPos = null;
       this.lostSightChaseTimer = 0;
+      this.cancelAttack();
       this.deathTimer = 0;
     }
 
@@ -180,7 +219,7 @@
   }
 
   /**
-   * 적 AI 상태 전이(Idle / Patrol / Chase / Dead), 플레이어 추적, 장애물 충돌 및 회피를 담당하는 시스템
+   * 적 AI 상태 전이(Idle / Patrol / Chase / Attack / Dead), 근접 공격 판정, 플레이어 추적 및 장애물 회피 시스템
    */
   class EnemySystem {
     constructor(initialEnemies = []) {
@@ -189,7 +228,6 @@
 
     /**
      * 테스트 사무실 맵의 기본 적 1마리 초기 배치 데이터 반환
-     * (플레이어 시작점(640, 455)으로부터 약 367px 떨어진 우측 복도에 배치하여 초기 대기/순찰 확인 가능)
      */
     static createDefaultEnemies(playerBaseSpeed = 260) {
       return [
@@ -199,7 +237,11 @@
           y: 415,
           playerBaseSpeed,
           maxHp: ENEMY_CONFIG.maxHp,
-          detectionRange: ENEMY_CONFIG.detectionRange
+          detectionRange: ENEMY_CONFIG.detectionRange,
+          attackRange: ENEMY_CONFIG.attackRange,
+          attackDamage: ENEMY_CONFIG.attackDamage,
+          attackCooldown: ENEMY_CONFIG.attackCooldown,
+          attackWindupDuration: ENEMY_CONFIG.attackWindupDuration
         }
       ];
     }
@@ -219,17 +261,19 @@
     }
 
     /**
-     * 매 프레임 적 AI, 이동, 타이머, 사망 후 제거 처리
+     * 매 프레임 적 AI, 근접 공격 준비/판정/쿨다운, 이동 및 사망 후 제거 처리
      */
-    update(dt, player, officeMap, staticBlockers = []) {
+    update(dt, player, officeMap, staticBlockers = [], playerDamageSystem = null) {
       if (dt <= 0) {
         return;
       }
 
+      const isPlayerDead = !player || Boolean(player.isDead) || player.hp <= 0;
+
       for (let i = this.enemies.length - 1; i >= 0; i--) {
         const enemy = this.enemies[i];
 
-        // 1. 피격 시각 타이머 및 발견 알림 타이머 감소
+        // 1. 공통 시각·쿨다운 타이머 감소
         if (enemy.hitFlashTimer > 0) {
           enemy.hitFlashTimer = Math.max(0, enemy.hitFlashTimer - dt);
         }
@@ -239,11 +283,14 @@
         if (enemy.alertTimer > 0) {
           enemy.alertTimer = Math.max(0, enemy.alertTimer - dt);
         }
-        if (enemy.avoidCommitTimer > 0) {
-          enemy.avoidCommitTimer = Math.max(0, enemy.avoidCommitTimer - dt);
+        if (enemy.attack.cooldownRemaining > 0) {
+          enemy.attack.cooldownRemaining = Math.max(0, enemy.attack.cooldownRemaining - dt);
+        }
+        if (enemy.attack.slashTimer > 0) {
+          enemy.attack.slashTimer = Math.max(0, enemy.attack.slashTimer - dt);
         }
 
-        // 2. Dead 상태: 추적/판정에 참여하지 않고 사망 연출 완료 후 목록에서 제거
+        // 2. Dead 상태: 공격·추적을 모두 중단하고 사망 연출 완료 후 제거
         if (enemy.state === ENEMY_STATES.DEAD || !enemy.alive) {
           enemy.deathTimer += dt;
           if (enemy.deathTimer >= enemy.deathDuration) {
@@ -253,19 +300,29 @@
           continue;
         }
 
-        // 3. 플레이어 거리 및 감지 범위(250px) 판정
+        // 3. 플레이어가 사망한 경우: 공격 및 추적을 즉시 중단하고 대기/순찰 유지
+        if (isPlayerDead) {
+          if (enemy.state === ENEMY_STATES.ATTACK || enemy.state === ENEMY_STATES.CHASE) {
+            enemy.cancelAttack();
+            this._returnToIdleFromChase(enemy);
+          }
+
+          if (enemy.state === ENEMY_STATES.IDLE) {
+            this._updateIdleState(enemy, dt);
+          } else if (enemy.state === ENEMY_STATES.PATROL) {
+            this._updatePatrolState(enemy, dt, null, officeMap, staticBlockers);
+          }
+          continue;
+        }
+
+        // 4. 플레이어와의 현재 거리 및 감지 여부 계산
         const dxToPlayer = player.position.x - enemy.position.x;
         const dyToPlayer = player.position.y - enemy.position.y;
         const distToPlayer = Math.hypot(dxToPlayer, dyToPlayer);
         const detectedNow = distToPlayer <= enemy.detectionRange;
 
         enemy.isPlayerInRange = detectedNow;
-
         if (detectedNow) {
-          if (enemy.state !== ENEMY_STATES.CHASE) {
-            enemy.state = ENEMY_STATES.CHASE;
-            enemy.alertTimer = ENEMY_CONFIG.alertPopDuration;
-          }
           enemy.lastKnownPlayerPos = {
             x: player.position.x,
             y: player.position.y
@@ -273,7 +330,25 @@
           enemy.lostSightChaseTimer = ENEMY_CONFIG.lostSightChaseDuration;
         }
 
-        // 4. 상태별 AI 행동 수행
+        // 5. 공격(Attack) 진행 중에는 즉시 Chase로 덮어쓰지 않고 공격 동작을 끝까지 수행
+        if (enemy.state === ENEMY_STATES.ATTACK) {
+          this._updateAttackState(enemy, dt, player, playerDamageSystem);
+          continue;
+        }
+
+        // 6. 감지 범위 내 진입 시 Chase 또는 사거리 내 즉시 Attack 전환
+        if (detectedNow) {
+          if (distToPlayer <= enemy.attackRange && enemy.attack.cooldownRemaining <= 0) {
+            this._startAttack(enemy, player);
+            continue;
+          }
+          if (enemy.state !== ENEMY_STATES.CHASE) {
+            enemy.state = ENEMY_STATES.CHASE;
+            enemy.alertTimer = ENEMY_CONFIG.alertPopDuration;
+          }
+        }
+
+        // 7. 비공격 상태별 행동 수행
         switch (enemy.state) {
           case ENEMY_STATES.IDLE:
             this._updateIdleState(enemy, dt);
@@ -282,11 +357,160 @@
             this._updatePatrolState(enemy, dt, player, officeMap, staticBlockers);
             break;
           case ENEMY_STATES.CHASE:
-            this._updateChaseState(enemy, dt, player, distToPlayer, officeMap, staticBlockers);
+            this._updateChaseState(
+              enemy,
+              dt,
+              player,
+              distToPlayer,
+              officeMap,
+              staticBlockers
+            );
             break;
           default:
             break;
         }
+      }
+    }
+
+    /**
+     * 적 근접 공격 준비(Windup) 시작: 추적 이동을 멈추고 플레이어 방향으로 조준 고정
+     */
+    _startAttack(enemy, player) {
+      enemy.state = ENEMY_STATES.ATTACK;
+      enemy.velocity.x = 0;
+      enemy.velocity.y = 0;
+      enemy.isMoving = false;
+      enemy.walkPhase = 0;
+
+      const dx = player.position.x - enemy.position.x;
+      const dy = player.position.y - enemy.position.y;
+      enemy.setDirection(dx, dy);
+
+      enemy.attack.phase = 'windup';
+      enemy.attack.timer = enemy.attack.windupDuration;
+      enemy.attack.aimAngle = enemy.direction.angle;
+      enemy.attack.aimDirX = enemy.direction.x;
+      enemy.attack.aimDirY = enemy.direction.y;
+      enemy.attack.hasAppliedStrike = false;
+    }
+
+    /**
+     * Attack 상태 업데이트: 준비 시간(0.35초) 후 단 1회 범위 판정 수행 -> 짧은 후딜 후 거리 재확인
+     */
+    _updateAttackState(enemy, dt, player, playerDamageSystem) {
+      // 공격 중에는 이동하지 않음 (추적 이동과 공격 애니메이션 중복 방지)
+      enemy.velocity.x = 0;
+      enemy.velocity.y = 0;
+      enemy.isMoving = false;
+      enemy.walkPhase = 0;
+
+      if (enemy.attack.phase === 'windup') {
+        enemy.attack.timer -= dt;
+        if (enemy.attack.timer > 0) {
+          return;
+        }
+
+        const overflowDt = -enemy.attack.timer;
+
+        // 공격 준비 완료 시점에 단 한 번만 공격 판정 및 쿨다운 적용
+        if (!enemy.attack.hasAppliedStrike) {
+          this._executeMeleeStrikeOnce(enemy, player, playerDamageSystem);
+        }
+
+        enemy.attack.phase = 'recovery';
+        enemy.attack.timer = Math.max(0, enemy.attack.recoveryDuration - overflowDt);
+        if (enemy.attack.timer <= 0) {
+          this._finishAttackAndTransition(enemy, player);
+        }
+        return;
+      }
+
+      if (enemy.attack.phase === 'recovery') {
+        enemy.attack.timer -= dt;
+        if (enemy.attack.timer <= 0) {
+          this._finishAttackAndTransition(enemy, player);
+        }
+      } else {
+        this._finishAttackAndTransition(enemy, player);
+      }
+    }
+
+    /**
+     * 실제 공격 판정 시점에 플레이어가 공격 사거리(45px) 및 공격 방향 범위 안에 있을 때만 1회 피해 적용
+     */
+    _executeMeleeStrikeOnce(enemy, player, playerDamageSystem) {
+      enemy.attack.hasAppliedStrike = true;
+      enemy.attack.cooldownRemaining = enemy.attack.cooldownTotal;
+      enemy.attack.slashTimer = enemy.attack.slashDuration;
+
+      if (!player || player.isDead || player.hp <= 0) {
+        return false;
+      }
+
+      const dx = player.position.x - enemy.position.x;
+      const dy = player.position.y - enemy.position.y;
+      const dist = Math.hypot(dx, dy);
+
+      // 1. 공격 사거리(45px) 바깥으로 벗어났다면 피해 미적용
+      if (dist > enemy.attackRange) {
+        return false;
+      }
+
+      // 2. 공격 조준 방향 전방 부채꼴 범위 확인
+      if (dist > 1e-5) {
+        const angleToPlayer = Math.atan2(dy, dx);
+        const angleDiff = Math.abs(this._normalizeAngle(angleToPlayer - enemy.attack.aimAngle));
+        const halfArc = enemy.attackArcRad * 0.5;
+        const closePadding = Math.min(0.28, Math.atan2(player.colliderRadius * 0.6, dist));
+
+        if (angleDiff > halfArc + closePadding) {
+          return false;
+        }
+      }
+
+      // 3. 재사용 가능한 플레이어 피해 시스템을 통해 체력 감소(무적 시 자동 무시)
+      if (playerDamageSystem) {
+        playerDamageSystem.applyDamage(player, enemy.attackDamage, {
+          source: 'enemy_melee',
+          attackerId: enemy.id
+        });
+      } else {
+        player.takeDamage(enemy.attackDamage, {
+          source: 'enemy_melee',
+          attackerId: enemy.id
+        });
+      }
+      return true;
+    }
+
+    /**
+     * 공격 동작 종료 후 플레이어와의 거리를 다시 확인하여 Attack / Chase / Idle 상태로 전환
+     */
+    _finishAttackAndTransition(enemy, player) {
+      enemy.attack.phase = 'none';
+      enemy.attack.timer = 0;
+
+      if (!player || player.isDead || player.hp <= 0) {
+        this._returnToIdleFromChase(enemy);
+        return;
+      }
+
+      const dx = player.position.x - enemy.position.x;
+      const dy = player.position.y - enemy.position.y;
+      const dist = Math.hypot(dx, dy);
+
+      if (dist <= enemy.attackRange && enemy.attack.cooldownRemaining <= 0) {
+        this._startAttack(enemy, player);
+      } else if (dist <= enemy.detectionRange) {
+        enemy.state = ENEMY_STATES.CHASE;
+        enemy.isPlayerInRange = true;
+        enemy.lastKnownPlayerPos = { x: player.position.x, y: player.position.y };
+        enemy.lostSightChaseTimer = ENEMY_CONFIG.lostSightChaseDuration;
+      } else if (enemy.lastKnownPlayerPos && enemy.lostSightChaseTimer > 0) {
+        enemy.state = ENEMY_STATES.CHASE;
+        enemy.isPlayerInRange = false;
+      } else {
+        this._returnToIdleFromChase(enemy);
       }
     }
 
@@ -333,7 +557,6 @@
         false
       );
 
-      // 순찰 중 벽이나 장애물에 가로막혀 거의 전진하지 못하면 반대 방향으로 전환 후 대기
       if (desiredStep > 0.5 && moved < desiredStep * 0.25) {
         this._finishPatrolLeg(enemy);
       }
@@ -351,12 +574,23 @@
 
     _updateChaseState(enemy, dt, player, distToPlayer, officeMap, staticBlockers) {
       if (enemy.isPlayerInRange) {
-        // 플레이어가 감지 범위 내에 있을 때: 실시간 플레이어 위치를 향해 추적
         const dx = player.position.x - enemy.position.x;
         const dy = player.position.y - enemy.position.y;
         enemy.setDirection(dx, dy);
 
-        // 플레이어와 겹쳐서 떨리는 현상 방지를 위해 최소 정지 거리 확보
+        // 공격 사거리(45px) 안에 들어오면 즉시 추적 이동을 중단하고 공격(또는 쿨다운 대기) 수행
+        if (distToPlayer <= enemy.attackRange) {
+          enemy.velocity.x = 0;
+          enemy.velocity.y = 0;
+          enemy.isMoving = false;
+          enemy.walkPhase = 0;
+
+          if (enemy.attack.cooldownRemaining <= 0) {
+            this._startAttack(enemy, player);
+          }
+          return;
+        }
+
         const stopDist = Math.max(
           enemy.chaseStopDistance,
           player.colliderRadius + enemy.colliderRadius + 3
@@ -384,10 +618,19 @@
           staticBlockers,
           true
         );
+
+        // 이번 프레임 이동으로 공격 사거리 안에 진입했고 쿨다운이 끝났다면 즉시 공격 준비 시작
+        const newDist = Math.hypot(
+          player.position.x - enemy.position.x,
+          player.position.y - enemy.position.y
+        );
+        if (newDist <= enemy.attackRange && enemy.attack.cooldownRemaining <= 0) {
+          this._startAttack(enemy, player);
+        }
         return;
       }
 
-      // 플레이어가 감지 범위를 벗어난 경우: 즉시 멈추지 않고 짧은 시간 동안 마지막 발견 위치로 이동
+      // 플레이어가 감지 범위를 벗어난 경우: 짧은 시간 동안 마지막 발견 위치로 이동
       enemy.lostSightChaseTimer -= dt;
 
       if (!enemy.lastKnownPlayerPos || enemy.lostSightChaseTimer <= 0) {
@@ -429,14 +672,10 @@
       enemy.isMoving = false;
       enemy.walkPhase = 0;
 
-      // 현재 도달한 위치를 새로운 짧은 순찰 기준점으로 갱신
       enemy.patrolOrigin.x = enemy.position.x;
       enemy.patrolOrigin.y = enemy.position.y;
     }
 
-    /**
-     * 목표 지점을 향해 정규화된 방향 계산 + 간단한 장애물 우회 + 서브스테핑 충돌 해결 수행
-     */
     _moveTowardsPoint(
       enemy,
       targetX,
@@ -460,7 +699,6 @@
         return 0;
       }
 
-      // 대각선 이동 시에도 속도가 일정하도록 단위 벡터로 정규화
       let dirX = dx / dist;
       let dirY = dy / dist;
 
@@ -522,7 +760,6 @@
       const ex = enemy.position.x;
       const ey = enemy.position.y;
 
-      // 1. 목표 지점까지의 직선 구간에서 가장 먼저 가로막는 사각형 장애물 탐색
       let nearestRect = null;
       let nearestT = Infinity;
 
@@ -561,7 +798,6 @@
         }
       }
 
-      // 2. 전방 근거리 원형 장애물(테스트 타겟 더미 등)에 대한 간단한 접선 회피
       const lookDist = Math.min(distToTarget, 26);
       const probeX = ex + baseDirX * lookDist;
       const probeY = ey + baseDirY * lookDist;
@@ -579,9 +815,6 @@
       return { dirX: baseDirX, dirY: baseDirY };
     }
 
-    /**
-     * 선분 (x0,y0)->(x1,y1)이 반경 pad만큼 확장된 사각형과 교차하는 최소 진행 비율 t(0~1) 반환
-     */
     _segmentExpandedRectHitT(x0, y0, x1, y1, rect, pad) {
       const minX = rect.x - pad;
       const maxX = rect.x + rect.width + pad;
@@ -629,9 +862,6 @@
       return tMin;
     }
 
-    /**
-     * 가로막힌 사각형 장애물의 4개 외곽 모서리 중 현재 위치에서 바로 이동 가능하고 우회 거리가 가장 짧은 지점 선택
-     */
     _pickReachableCornerWaypoint(enemy, targetX, targetY, rect, obstacles, bounds) {
       const r = enemy.colliderRadius;
       const ex = enemy.position.x;
@@ -654,18 +884,15 @@
         const cx = this._clamp(c.x, bounds.minX, bounds.maxX);
         const cy = this._clamp(c.y, bounds.minY, bounds.maxY);
 
-        // 이미 도달한 모서리는 건너뜀
         const distToCorner = Math.hypot(cx - ex, cy - ey);
         if (distToCorner < 4) {
           continue;
         }
 
-        // 모서리로 향하는 직선이 해당 장애물 내부 몸통을 가로지르면 직접 도달 불가
         if (this._segmentExpandedRectHitT(ex, ey, cx, cy, rect, Math.max(2, r - 2.5)) !== null) {
           continue;
         }
 
-        // 모서리 좌표 자체가 다른 고체 장애물 내부에 박혀 있는 경우 제외
         let insideOther = false;
         for (let j = 0; j < obstacles.length; j++) {
           const other = obstacles[j];
@@ -681,7 +908,6 @@
           continue;
         }
 
-        // 해당 모서리에서 목표 지점까지 직선이 이 장애물을 완전히 벗어나는지 여부 우선 판별
         const clearsRect =
           this._segmentExpandedRectHitT(cx, cy, targetX, targetY, rect, Math.max(2, r - 2)) ===
           null;
@@ -700,9 +926,6 @@
       return bestCorner;
     }
 
-    /**
-     * 축별 분리 이동 + 원-사각형/원-원 밀어내기를 결합하여 벽·책상 관통 방지 및 자연스러운 슬라이딩 처리
-     */
     _applyMovementWithCollisions(enemy, moveX, moveY, player, officeMap, staticBlockers) {
       const totalDist = Math.hypot(moveX, moveY);
       const steps = Math.max(1, Math.ceil(totalDist / 8));
@@ -717,7 +940,6 @@
       let nextY = enemy.position.y;
 
       for (let s = 0; s < steps; s++) {
-        // X축 이동 후 충돌 해결, 이어서 Y축 이동 후 충돌 해결 (축별 슬라이딩 보장)
         nextX = this._clamp(nextX + stepX, bounds.minX, bounds.maxX);
         const afterX = this._resolveStepCollisions(
           nextX,
@@ -772,7 +994,7 @@
           nextY = resC.y;
         }
 
-        if (player && player.hp > 0) {
+        if (player && !player.isDead && player.hp > 0) {
           const resP = this._resolveCircleCircle(
             nextX,
             nextY,
@@ -853,6 +1075,13 @@
       if (minPen === penRight) return { x: right + radius, y: cy };
       if (minPen === penTop) return { x: cx, y: top - radius };
       return { x: cx, y: bottom + radius };
+    }
+
+    _normalizeAngle(rad) {
+      let angle = rad % (Math.PI * 2);
+      if (angle > Math.PI) angle -= Math.PI * 2;
+      if (angle < -Math.PI) angle += Math.PI * 2;
+      return angle;
     }
 
     _clamp(value, min, max) {

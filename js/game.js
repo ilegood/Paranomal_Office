@@ -4,7 +4,7 @@
   const PO = (global.PO = global.PO || {});
 
   /**
-   * 게임 초기화 및 메인 업데이트/렌더링 루프 관리
+   * 게임 초기화, 재시작 및 메인 업데이트/렌더링 루프 관리
    */
   class Game {
     constructor() {
@@ -15,8 +15,35 @@
         throw new Error('필수 게임 DOM 요소(#game-stage, #game-canvas)를 찾을 수 없습니다.');
       }
 
-      // 핵심 모듈 초기화
+      // 고정 맵 및 입출력/렌더링/UI 모듈 초기화
       this.map = new PO.OfficeMap();
+      this.input = new PO.InputManager(window);
+      this.movement = new PO.MovementSystem();
+      this.renderer = new PO.Renderer(this.canvas, this.stageElement, this.map);
+      this.ui = new PO.UIManager();
+
+      // 마우스 월드 조준 좌표 (마우스 입력 전에는 null)
+      this.aimWorld = null;
+      this.isGameOver = false;
+
+      // 플레이어, 피해 시스템, 적, 전투 타겟 등 런타임 상태 초기화
+      this._initRunState();
+
+      // 게임 오버 화면의 재시작 버튼 이벤트 연결
+      this.ui.bindRestart(() => this.restart());
+
+      this.isRunning = false;
+      this._lastTimestamp = 0;
+      this._rafId = null;
+      this._boundTick = this._tick.bind(this);
+    }
+
+    /**
+     * 테스트 맵의 플레이어, 피해 처리 시스템, 적, 전투 타겟 상태를 초기 상태로 생성/재설정
+     */
+    _initRunState() {
+      this.isGameOver = false;
+
       this.player = new PO.Player({
         x: this.map.spawnPoint.x,
         y: this.map.spawnPoint.y,
@@ -24,26 +51,56 @@
         hp: 100,
         maxHp: 100
       });
-      this.input = new PO.InputManager(window);
-      this.movement = new PO.MovementSystem();
+
+      this.playerDamage = new PO.PlayerDamageSystem({
+        onPlayerDeath: () => this._handlePlayerDeath()
+      });
+
       this.enemies = new PO.EnemySystem(
         PO.EnemySystem.createDefaultEnemies(this.player.speed)
       );
+
       this.combat = new PO.CombatSystem(PO.CombatSystem.createDefaultTargets());
 
       // 대시 무적 판정 검증용 임시 위험 구역 (코어 시스템과 분리, 미로드 시 자동 생략)
       this.testHazard = PO.TestDamageZone ? new PO.TestDamageZone() : null;
+    }
 
-      this.renderer = new PO.Renderer(this.canvas, this.stageElement, this.map);
-      this.ui = new PO.UIManager();
+    /**
+     * 플레이어 사망(체력 0 이하) 전환 시 입력 초기화 및 게임 오버 상태 활성화
+     */
+    _handlePlayerDeath() {
+      if (this.isGameOver) {
+        return;
+      }
+      this.isGameOver = true;
+      this.input.reset();
+    }
 
-      // 마우스 월드 조준 좌표 (마우스 입력 전에는 null)
-      this.aimWorld = null;
+    /**
+     * 테스트 맵을 초기 상태로 다시 시작
+     */
+    restart() {
+      this.input.reset();
+      this._initRunState();
 
-      this.isRunning = false;
-      this._lastTimestamp = 0;
-      this._rafId = null;
-      this._boundTick = this._tick.bind(this);
+      if (this.input.mouse.hasPosition) {
+        this.input.mouse.dirty = true;
+        this._updateAimFromMouse();
+      } else {
+        this.aimWorld = null;
+      }
+
+      this._lastTimestamp = performance.now();
+
+      this.ui.update(
+        this.player,
+        this.input.getState(),
+        this.combat.getUIState(),
+        this.player.getDashUIState(),
+        this.isGameOver
+      );
+      this.render();
     }
 
     start() {
@@ -59,16 +116,10 @@
         this.player,
         this.input.getState(),
         this.combat.getUIState(),
-        this.player.getDashUIState()
+        this.player.getDashUIState(),
+        this.isGameOver
       );
-      this.renderer.render(
-        this.map,
-        this.player,
-        this.combat,
-        this.aimWorld,
-        this.testHazard,
-        this.enemies
-      );
+      this.render();
 
       this._rafId = requestAnimationFrame(this._boundTick);
     }
@@ -101,7 +152,7 @@
      * 마우스 커서의 화면 좌표를 월드 좌표로 변환하여 플레이어 조준 방향 갱신
      */
     _updateAimFromMouse() {
-      if (!this.input.mouse.hasPosition) {
+      if (!this.input.mouse.hasPosition || this.player.isDead) {
         return;
       }
 
@@ -121,72 +172,108 @@
     }
 
     update(dt) {
-      // 1. 무기 전환 입력 처리 (1: 근접 스테이플러, 2: 원거리 권총)
-      const requestedSlot = this.input.consumeWeaponSwitch();
-      if (requestedSlot !== null) {
-        this.combat.switchWeapon(requestedSlot);
+      const playerCanAct = !this.isGameOver && !this.player.isDead;
+
+      if (playerCanAct) {
+        // 1. 무기 전환 입력 처리 (1: 근접 스테이플러, 2: 원거리 권총)
+        const requestedSlot = this.input.consumeWeaponSwitch();
+        if (requestedSlot !== null) {
+          this.combat.switchWeapon(requestedSlot);
+        }
+
+        // 2. 대시 전 최신 마우스 조준 방향 반영 (이동 입력 없을 때 조준 방향으로 대시하기 위함)
+        this._updateAimFromMouse();
+
+        // 3. Space 대시 시작 입력 처리
+        const moveVector = this.input.getMoveVector();
+        if (this.input.consumeDashInput()) {
+          this.movement.tryStartDash(this.player, moveVector);
+        }
+
+        // 4. 대시 이동 / 일반 WASD 이동 및 벽·장애물·타겟·생존 적 충돌 처리
+        const circleBlockers = [
+          ...this.combat.getAliveTargets(),
+          ...this.enemies.getAliveEnemies()
+        ];
+        this.movement.update(this.player, moveVector, this.map, dt, {
+          updateDirection: !this.input.mouse.hasPosition,
+          circleBlockers
+        });
+
+        // 5. 플레이어 상태 타이머(대시 쿨다운 1.2s, 대시 무적 0.25s, 피격 무적 0.6s, 잔상 수명) 업데이트
+        this.player.updateStatusTimers(dt);
+
+        // 6. 이동 완료 후 플레이어 최신 좌표 기준으로 조준각 재보정
+        this._updateAimFromMouse();
+
+        // 7. 플레이어 공격 판정, 투사체 이동/벽 충돌, 쿨다운, 타겟 및 생존 적 피격 업데이트
+        const shouldAttack = this.input.consumeAttackInput();
+        this.combat.update(
+          dt,
+          this.player,
+          this.map,
+          shouldAttack,
+          this.enemies.getAliveEnemies()
+        );
+      } else {
+        // 사망(게임 오버) 상태에서는 이동·공격·대시·무기 전환 입력을 모두 무시하고 잔여 이펙트만 정리
+        this.input.consumeWeaponSwitch();
+        this.input.consumeDashInput();
+        this.input.consumeAttackInput();
+        this.player.updateStatusTimers(dt);
+        this.combat.update(
+          dt,
+          this.player,
+          this.map,
+          false,
+          this.enemies.getAliveEnemies()
+        );
       }
 
-      // 2. 대시 전 최신 마우스 조준 방향 반영 (이동 입력 없을 때 조준 방향으로 대시하기 위함)
-      this._updateAimFromMouse();
-
-      // 3. Space 대시 시작 입력 처리
-      const moveVector = this.input.getMoveVector();
-      if (this.input.consumeDashInput()) {
-        this.movement.tryStartDash(this.player, moveVector);
-      }
-
-      // 4. 대시 이동 / 일반 WASD 이동 및 벽·장애물·타겟·생존 적 충돌 처리
-      const circleBlockers = [
-        ...this.combat.getAliveTargets(),
-        ...this.enemies.getAliveEnemies()
-      ];
-      this.movement.update(this.player, moveVector, this.map, dt, {
-        updateDirection: !this.input.mouse.hasPosition,
-        circleBlockers
-      });
-
-      // 5. 플레이어 상태 타이머(대시 쿨다운 1.2s, 무적 시간 0.25s, 잔상 수명) 업데이트
-      this.player.updateStatusTimers(dt);
-
-      // 6. 이동 완료 후 플레이어 최신 좌표 기준으로 조준각 재보정
-      this._updateAimFromMouse();
-
-      // 7. 공격 판정, 투사체 이동/벽 충돌, 쿨다운, 타겟 및 생존 적 피격 업데이트
-      const shouldAttack = this.input.consumeAttackInput();
-      this.combat.update(
+      // 8. 적 AI 상태 전이(Idle/Patrol/Chase/Attack/Dead), 근접 공격 및 플레이어 피해 처리
+      this.enemies.update(
         dt,
         this.player,
         this.map,
-        shouldAttack,
-        this.enemies.getAliveEnemies()
+        this.combat.getAliveTargets(),
+        this.playerDamage
       );
-
-      // 8. 적 AI 상태 전이(Idle/Patrol/Chase/Dead), 플레이어 추적 및 장애물 회피 업데이트
-      this.enemies.update(dt, this.player, this.map, this.combat.getAliveTargets());
 
       // 9. 임시 무적 테스트용 위험 구역 판정 (분리된 선택 모듈)
       if (this.testHazard) {
         this.testHazard.update(dt, this.player);
+        if (this.player.isDead && !this.isGameOver) {
+          this._handlePlayerDeath();
+        }
       }
 
-      // 9. UI 동기화
+      // 10. 플레이어 피격/회피 플로팅 팝업 및 피격 링 이펙트 갱신
+      this.playerDamage.update(dt);
+
+      // 11. UI 동기화 (체력 바 즉시 반영 및 게임 오버 오버레이 제어)
+      const uiInputState = this.isGameOver
+        ? { up: false, down: false, left: false, right: false, dash: false, leftClick: false }
+        : this.input.getState();
+
       this.ui.update(
         this.player,
-        this.input.getState(),
+        uiInputState,
         this.combat.getUIState(),
-        this.player.getDashUIState()
+        this.player.getDashUIState(),
+        this.isGameOver
       );
     }
 
     render() {
+      const activeAim = this.player.isDead ? null : this.aimWorld;
       this.renderer.render(
         this.map,
         this.player,
         this.combat,
-        this.aimWorld,
+        activeAim,
         this.testHazard,
-        this.enemies
+        this.enemies,
+        this.playerDamage
       );
     }
   }

@@ -444,3 +444,84 @@ body {
 .cooldown-bar-fill.is-ready {
   background: linear-gradient(90deg, #22c55e 0%, #4ade80 100%);
 }
+
+/* 피격 시 체력 패널 짧은 경고 테두리 강조 */
+.hud-status-panel.is-hurt {
+  border-color: #fb7185;
+  box-shadow: 0 0 14px rgba(244, 63, 94, 0.45), 0 4px 0 rgba(8, 10, 18, 0.85);
+}
+
+/* 게임 오버 오버레이 (상단 체력 HUD가 함께 확인되도록 반투명 암전 적용) */
+.game-over-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at center, rgba(15, 10, 24, 0.62) 0%, rgba(7, 9, 16, 0.82) 100%);
+  pointer-events: auto;
+  cursor: default;
+}
+
+.game-over-card {
+  padding: 26px 34px;
+  min-width: clamp(280px, 32vw, 370px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+  border-color: #f43f5e;
+  background: rgba(17, 19, 32, 0.94);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.78), 0 0 24px rgba(244, 63, 94, 0.25);
+}
+
+.game-over-badge {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: #fda4af;
+  background: rgba(225, 29, 72, 0.2);
+  border: 1.5px solid rgba(244, 63, 94, 0.55);
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+
+.game-over-title {
+  font-size: clamp(24px, 2.4vw, 32px);
+  font-weight: 900;
+  color: #fff1f2;
+  text-shadow: 0 3px 0 #090b12;
+}
+
+.game-over-desc {
+  font-size: clamp(12.5px, 1vw, 14px);
+  font-weight: 600;
+  color: #cbd5e1;
+  margin-bottom: 6px;
+}
+
+.restart-btn {
+  appearance: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 14.5px;
+  font-weight: 800;
+  color: #111522;
+  background: linear-gradient(180deg, #fde047 0%, #fbbf24 100%);
+  border: 2px solid #b45309;
+  border-bottom-width: 4px;
+  border-radius: 8px;
+  padding: 10px 26px;
+  transition: transform 0.08s ease, filter 0.12s ease;
+}
+
+.restart-btn:hover {
+  filter: brightness(1.06);
+}
+
+.restart-btn:active {
+  transform: translateY(2px);
+  border-bottom-width: 2px;
+}

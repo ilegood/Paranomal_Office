@@ -69,7 +69,15 @@
     /**
      * 전체 프레임 렌더링
      */
-    render(officeMap, player, combat = null, aimWorld = null, testHazard = null, enemySystem = null) {
+    render(
+      officeMap,
+      player,
+      combat = null,
+      aimWorld = null,
+      testHazard = null,
+      enemySystem = null,
+      playerDamageSystem = null
+    ) {
       const ctx = this.ctx;
       ctx.save();
       ctx.setTransform(this.scale * this.dpr, 0, 0, this.scale * this.dpr, 0, 0);
@@ -80,7 +88,7 @@
       // 2. 북쪽(뒷면) 벽면 및 좌/우 외벽
       this._drawBackAndSideWalls(ctx, officeMap);
 
-      // 3. 임시 무적 테스트 위험 구역, 적 감지 반경 표시, 바닥 그림자 및 조준 방향 표시
+      // 3. 임시 무적 테스트 위험 구역, 적 감지/공격 예고 표시, 바닥 그림자 및 조준 방향 표시
       if (testHazard) {
         testHazard.renderFloor(ctx);
       }
@@ -88,7 +96,9 @@
         this._drawEnemyFloorIndicators(ctx, enemySystem);
       }
       this._drawShadows(ctx, officeMap, player, combat, enemySystem);
-      this._drawPlayerDirectionIndicator(ctx, player);
+      if (!player.isDead) {
+        this._drawPlayerDirectionIndicator(ctx, player);
+      }
 
       // 4. 쿼터뷰 Y-정렬 렌더링 (발/바닥 Y좌표 기준으로 앞뒤 원근 순서 결정)
       const renderQueue = [];
@@ -191,11 +201,17 @@
         }
       }
 
-      // 5. 근접 휘두르기 궤적, 피격 스파크, 플로팅 피해량 수치
+      // 5. 플레이어/적 근접 휘두르기 궤적, 피격 스파크, 플로팅 피해량 수치
+      if (enemySystem) {
+        this._drawEnemySlashEffects(ctx, enemySystem);
+      }
       if (combat) {
         this._drawMeleeSlashArc(ctx, combat);
         this._drawImpactEffects(ctx, combat);
         this._drawDamagePopups(ctx, combat);
+      }
+      if (playerDamageSystem) {
+        this._drawPlayerDamageFeedback(ctx, playerDamageSystem);
       }
       if (testHazard) {
         testHazard.renderPopups(ctx);
@@ -205,8 +221,8 @@
       this._drawForegroundWall(ctx, officeMap);
       this._drawNightAtmosphere(ctx, officeMap);
 
-      // 7. 마우스 조준선(크로스헤어) 표시
-      if (aimWorld) {
+      // 7. 마우스 조준선(크로스헤어) 표시 (사망 시 미표시)
+      if (aimWorld && !player.isDead) {
         this._drawAimCrosshair(ctx, aimWorld, equippedWeaponId);
       }
 
@@ -496,7 +512,7 @@
       const aliveEnemies = enemySystem.getAliveEnemies();
       for (let i = 0; i < aliveEnemies.length; i++) {
         const enemy = aliveEnemies[i];
-        const isChasing = enemy.state === 'Chase';
+        const isChasing = enemy.state === 'Chase' || enemy.state === 'Attack';
 
         ctx.save();
         // 적 감지 범위(250px) 은은한 바닥 점선 링
@@ -510,8 +526,37 @@
         ctx.stroke();
         ctx.setLineDash([]);
 
+        // 적 근접 공격 준비(Windup 0.35s) 중 바닥 공격 방향·사거리(45px) 예고 부채꼴 표시
+        if (enemy.state === 'Attack' && enemy.attack && enemy.attack.phase === 'windup') {
+          const windupTotal = Math.max(0.01, enemy.attack.windupDuration);
+          const progress = Math.max(0, Math.min(1, 1 - enemy.attack.timer / windupTotal));
+          const halfArc = enemy.attackArcRad * 0.5;
+          const startAng = enemy.attack.aimAngle - halfArc;
+          const endAng = enemy.attack.aimAngle + halfArc;
+          const range = enemy.attackRange;
+
+          // 외곽 최대 사거리 영역 테두리
+          ctx.beginPath();
+          ctx.moveTo(enemy.position.x, enemy.position.y);
+          ctx.arc(enemy.position.x, enemy.position.y, range, startAng, endAng);
+          ctx.closePath();
+          ctx.fillStyle = 'rgba(244, 63, 94, 0.16)';
+          ctx.fill();
+          ctx.strokeStyle = 'rgba(251, 113, 133, 0.72)';
+          ctx.lineWidth = 1.8;
+          ctx.stroke();
+
+          // 준비 진행률에 따라 차오르는 내부 경고 채움
+          ctx.beginPath();
+          ctx.moveTo(enemy.position.x, enemy.position.y);
+          ctx.arc(enemy.position.x, enemy.position.y, range * progress, startAng, endAng);
+          ctx.closePath();
+          ctx.fillStyle = `rgba(239, 68, 68, ${(0.25 + progress * 0.32).toFixed(3)})`;
+          ctx.fill();
+        }
+
         // 플레이어가 감지 범위를 벗어난 직후 마지막 발견 위치를 추적 중일 때 목표 지점 표시
-        if (isChasing && !enemy.isPlayerInRange && enemy.lastKnownPlayerPos) {
+        if (enemy.state === 'Chase' && !enemy.isPlayerInRange && enemy.lastKnownPlayerPos) {
           const lx = enemy.lastKnownPlayerPos.x;
           const ly = enemy.lastKnownPlayerPos.y;
           ctx.strokeStyle = 'rgba(251, 191, 36, 0.55)';
@@ -835,11 +880,45 @@
     _drawPlayer(ctx, player, weaponId = null, activeMeleeEffect = null) {
       const px = player.position.x;
       const py = player.position.y;
+
+      // 플레이어 사망 상태: 바닥에 쓰러진 카툰 회사원 연출
+      if (player.isDead) {
+        ctx.save();
+        ctx.translate(px, py - 4);
+        ctx.rotate(Math.PI * 0.5);
+        this._fillStrokeRoundRect(ctx, -11, -12, 22, 22, 6, '#cbd5e1', OUTLINE_COLOR, 2.4);
+        this._fillStrokeRect(ctx, -10, 4, 20, 7, '#1e293b', OUTLINE_COLOR, 2);
+        ctx.fillStyle = '#fbd3b6';
+        ctx.strokeStyle = OUTLINE_COLOR;
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ctx.arc(0, -22, 12, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // 기절 눈(X X) 표현
+        ctx.strokeStyle = OUTLINE_COLOR;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(-5, -24);
+        ctx.lineTo(-2, -21);
+        ctx.moveTo(-2, -24);
+        ctx.lineTo(-5, -21);
+        ctx.moveTo(2, -24);
+        ctx.lineTo(5, -21);
+        ctx.moveTo(5, -24);
+        ctx.lineTo(2, -21);
+        ctx.stroke();
+        ctx.restore();
+        return;
+      }
+
       const dirX = player.direction.x;
       const dirY = player.direction.y;
 
       const isDashing = Boolean(player.dash && player.dash.isDashing);
-      const isInvincible = Boolean(player.isInvulnerable && player.isInvulnerable());
+      const isDashInvinc = Boolean(player.isDashInvulnerable && player.isDashInvulnerable());
+      const isHitInvinc = Boolean(player.isHitInvulnerable && player.isHitInvulnerable());
       const isHurt = player.hurtFlashTimer > 0;
 
       const isMoving = player.isMoving;
@@ -873,8 +952,9 @@
         }
       }
 
-      // 무적 상태 시 외곽 실드 링 및 반투명 처리 (무적 종료 시 즉시 원래 외형으로 복귀)
-      if (isInvincible) {
+      // 1) 대시 무적(0.25s): 청록색 실드 링 및 반투명 외형
+      // 2) 피격 후 무적(0.6s): 빠른 깜빡임(Blink) 및 붉은 경고 색조 변화
+      if (isDashInvinc) {
         ctx.strokeStyle = 'rgba(103, 232, 249, 0.85)';
         ctx.fillStyle = 'rgba(56, 189, 248, 0.14)';
         ctx.lineWidth = 2;
@@ -884,11 +964,31 @@
         ctx.stroke();
 
         ctx.globalAlpha = 0.66;
+      } else if (isHitInvinc) {
+        const blinkOn = Math.floor(player.hitInvincibility.timer * 18) % 2 === 0;
+        ctx.globalAlpha = blinkOn ? 0.4 : 0.88;
       }
 
-      const outlineColor = isInvincible ? '#0ea5e9' : OUTLINE_COLOR;
-      const shirtColor = isInvincible ? '#bae6fd' : isHurt ? '#fecdd3' : '#f1f5f9';
-      const sleeveColor = isInvincible ? '#7dd3fc' : isHurt ? '#fda4af' : '#e2e8f0';
+      const outlineColor = isDashInvinc
+        ? '#0ea5e9'
+        : isHurt || isHitInvinc
+          ? '#e11d48'
+          : OUTLINE_COLOR;
+      const shirtColor = isDashInvinc
+        ? '#bae6fd'
+        : isHurt
+          ? '#fda4af'
+          : isHitInvinc
+            ? '#ffe4e6'
+            : '#f1f5f9';
+      const sleeveColor = isDashInvinc
+        ? '#7dd3fc'
+        : isHurt
+          ? '#fb7185'
+          : isHitInvinc
+            ? '#fecdd3'
+            : '#e2e8f0';
+      const isInvincible = isDashInvinc;
 
       // 위쪽을 조준할 때는 무기가 몸통 뒤쪽에 자연스럽게 위치하도록 먼저 렌더링
       if (weaponId && facingBack) {
@@ -1171,7 +1271,12 @@
       }
 
       const isFlashing = enemy.hitFlashTimer > 0;
-      const isChasing = enemy.state === 'Chase';
+      const isAttacking = enemy.state === 'Attack';
+      const isWindup = isAttacking && enemy.attack && enemy.attack.phase === 'windup';
+      const windupProgress = isWindup
+        ? Math.max(0, Math.min(1, 1 - enemy.attack.timer / Math.max(0.01, enemy.attack.windupDuration)))
+        : 0;
+      const isChasing = enemy.state === 'Chase' || isAttacking;
       const dirX = enemy.direction.x;
       const dirY = enemy.direction.y;
       const facingBack = dirY < -0.55;
@@ -1182,20 +1287,44 @@
       const wobbleX =
         enemy.shakeTimer > 0
           ? Math.sin(enemy.shakeTimer * 58) * 4 * (enemy.lastHitDirX || 1)
-          : 0;
+          : isWindup
+            ? Math.sin(windupProgress * 28) * 1.8
+            : 0;
+
+      // 공격 타격 직후 짧은 전진 반동 오프셋
+      const lungeOffset =
+        isAttacking && enemy.attack && enemy.attack.phase === 'recovery' ? 5 : 0;
 
       ctx.save();
-      ctx.translate(ex + wobbleX, ey);
+      ctx.translate(
+        ex + wobbleX + dirX * lungeOffset,
+        ey + dirY * lungeOffset * 0.65
+      );
 
-      // 1. 괴이 오라(Aura) 후광
-      ctx.fillStyle = isChasing ? 'rgba(225, 29, 72, 0.16)' : 'rgba(139, 92, 246, 0.14)';
+      // 공격 준비(Windup) 중 몸체가 부풀어 오르는 크기 변화 표현
+      if (isWindup) {
+        ctx.scale(1 + windupProgress * 0.14, 1 - windupProgress * 0.08);
+      }
+
+      // 1. 괴이 오라(Aura) 후광 (공격 준비 시 강렬한 주홍빛 경계 오라)
+      ctx.fillStyle = isWindup
+        ? `rgba(249, 115, 22, ${(0.22 + windupProgress * 0.25).toFixed(3)})`
+        : isChasing
+          ? 'rgba(225, 29, 72, 0.16)'
+          : 'rgba(139, 92, 246, 0.14)';
       ctx.beginPath();
-      ctx.ellipse(0, -25 - bob, 21, 27, 0, 0, Math.PI * 2);
+      ctx.ellipse(0, -25 - bob, 21 + windupProgress * 4, 27 + windupProgress * 3, 0, 0, Math.PI * 2);
       ctx.fill();
 
       // 2. 하단 그림자 촉수/해진 정장 자락
-      const coatFill = isFlashing ? '#ffffff' : isChasing ? '#3b0764' : '#2e1065';
-      const sleeveFill = isFlashing ? '#fecdd3' : '#4c1d95';
+      const coatFill = isFlashing
+        ? '#ffffff'
+        : isWindup
+          ? '#991b1b'
+          : isChasing
+            ? '#3b0764'
+            : '#2e1065';
+      const sleeveFill = isFlashing ? '#fecdd3' : isWindup ? '#dc2626' : '#4c1d95';
       const sway = enemy.isMoving ? Math.sin(enemy.walkPhase) * 3 : 0;
 
       ctx.fillStyle = isFlashing ? '#f8fafc' : '#1e1b4b';
@@ -1236,8 +1365,8 @@
         ctx.fillRect(tieX - 9, bodyTop + 6, 5, 4);
       }
 
-      // 4. 앞으로 뻗은 괴이 양팔
-      const armReachY = isChasing ? -2.5 : 0;
+      // 4. 앞으로 뻗은 괴이 양팔 (공격 준비 중 치켜드는 동작)
+      const armReachY = isWindup ? -6 - windupProgress * 4 : isChasing ? -2.5 : 0;
       this._fillStrokeRoundRect(
         ctx,
         -18 + dirX * 2,
@@ -1319,9 +1448,12 @@
         ctx.fillRect(barX + 1.5, barY + 1.5, (barW - 3) * hpRatio, barH - 3);
       }
 
-      // 체력 수치 및 AI 상태 텍스트 (대기 / 순찰 / 추적)
-      const stateBadge =
-        enemy.state === 'Chase'
+      // 체력 수치 및 AI 상태 텍스트 (대기 / 순찰 / 추적 / 공격 준비)
+      const stateBadge = isAttacking
+        ? isWindup
+          ? '공격 준비!'
+          : '공격!'
+        : enemy.state === 'Chase'
           ? enemy.isPlayerInRange
             ? '추적!'
             : '수색?'
@@ -1335,7 +1467,7 @@
       ctx.strokeStyle = OUTLINE_COLOR;
       ctx.lineWidth = 2.8;
       ctx.strokeText(topLabel, 0, barY - 3.5);
-      ctx.fillStyle = isChasing ? '#fda4af' : '#e9d5ff';
+      ctx.fillStyle = isWindup ? '#fde047' : isChasing ? '#fda4af' : '#e9d5ff';
       ctx.fillText(topLabel, 0, barY - 3.5);
 
       // 플레이어 최초 감지 직후 짧은 느낌표(!) 팝업 강조
@@ -1512,6 +1644,80 @@
         ctx.lineTo(Math.cos(headAngle) * innerHeadR, Math.sin(headAngle) * innerHeadR);
         ctx.stroke();
 
+        ctx.restore();
+      }
+    }
+
+    /**
+     * 적 근접 공격 타격 순간의 붉은 할퀴기 부채꼴 이펙트
+     */
+    _drawEnemySlashEffects(ctx, enemySystem) {
+      const aliveEnemies = enemySystem.getAliveEnemies();
+      for (let i = 0; i < aliveEnemies.length; i++) {
+        const enemy = aliveEnemies[i];
+        if (!enemy.attack || enemy.attack.slashTimer <= 0) {
+          continue;
+        }
+
+        const t = Math.max(
+          0,
+          Math.min(1, 1 - enemy.attack.slashTimer / Math.max(0.01, enemy.attack.slashDuration))
+        );
+        const alpha = Math.pow(1 - t, 1.8);
+        const sweepDir = Math.cos(enemy.attack.aimAngle) < 0 ? -1 : 1;
+        const halfArc = enemy.attackArcRad * 0.5;
+        const tailAngle = enemy.attack.aimAngle - sweepDir * halfArc * (1 - t * 0.45);
+        const headAngle = enemy.attack.aimAngle + sweepDir * halfArc;
+        const radius = enemy.attackRange * (0.92 + 0.1 * (1 - t));
+
+        ctx.save();
+        ctx.translate(enemy.position.x, enemy.position.y - 20);
+        this._traceTaperedFanPath(ctx, tailAngle, headAngle, sweepDir, radius, 0.22);
+        ctx.fillStyle = `rgba(244, 63, 94, ${(alpha * 0.65).toFixed(3)})`;
+        ctx.fill();
+
+        ctx.strokeStyle = `rgba(254, 205, 211, ${(alpha * 0.92).toFixed(3)})`;
+        ctx.lineWidth = 2.6;
+        ctx.beginPath();
+        ctx.arc(0, 0, Math.max(1, radius - 1), tailAngle, headAngle, sweepDir < 0);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    /**
+     * 플레이어 피격 링 및 피해량(-15) / 대시 회피 텍스트 렌더링
+     */
+    _drawPlayerDamageFeedback(ctx, playerDamageSystem) {
+      for (let i = 0; i < playerDamageSystem.hitRings.length; i++) {
+        const ring = playerDamageSystem.hitRings[i];
+        const t = Math.min(1, ring.elapsed / ring.duration);
+        const radius = 5 + (ring.maxRadius - 5) * t;
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, 1 - t);
+        ctx.strokeStyle = ring.color;
+        ctx.lineWidth = 3 * (1 - t * 0.4);
+        ctx.beginPath();
+        ctx.arc(ring.x, ring.y, radius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      if (playerDamageSystem.popups.length > 0) {
+        ctx.save();
+        ctx.font = '800 15px "Malgun Gothic", sans-serif';
+        ctx.textAlign = 'center';
+        for (let i = 0; i < playerDamageSystem.popups.length; i++) {
+          const p = playerDamageSystem.popups[i];
+          const t = Math.min(1, p.elapsed / p.duration);
+          const alpha = t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3;
+          ctx.globalAlpha = Math.max(0, alpha);
+          ctx.strokeStyle = OUTLINE_COLOR;
+          ctx.lineWidth = 3.5;
+          ctx.strokeText(p.text, p.x, p.y);
+          ctx.fillStyle = p.color;
+          ctx.fillText(p.text, p.x, p.y);
+        }
         ctx.restore();
       }
     }

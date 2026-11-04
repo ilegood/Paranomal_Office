@@ -35,7 +35,7 @@
           <!-- 프로토타입 상태 표시 -->
           <aside class="hud-card prototype-badge">
             <span class="status-dot" aria-hidden="true"></span>
-            <span class="prototype-text">PROTOTYPE · Phase 4 (전투 시스템 검증용 · 적 AI 및 추적)</span>
+            <span class="prototype-text">PROTOTYPE · Phase 5 (전투 시스템 검증용 · 적 공격 및 피해 시스템)</span>
           </aside>
         </div>
 
@@ -97,6 +97,16 @@
               </div>
             </div>
           </section>
+        </div>
+      </div>
+
+      <!-- 플레이어 사망 시 표시되는 게임 오버 오버레이 -->
+      <div id="game-over-overlay" class="game-over-overlay" role="dialog" aria-modal="true" aria-labelledby="game-over-title" hidden>
+        <div class="hud-card game-over-card">
+          <span class="game-over-badge">OVERTIME FAILED</span>
+          <h2 id="game-over-title" class="game-over-title">게임 오버</h2>
+          <p class="game-over-desc">체력이 모두 소진되어 야근 중 쓰러졌습니다.</p>
+          <button id="restart-btn" type="button" class="restart-btn">다시 시작</button>
         </div>
       </div>
     </div>
