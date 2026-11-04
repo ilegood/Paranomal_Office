@@ -26,6 +26,9 @@
       });
       this.input = new PO.InputManager(window);
       this.movement = new PO.MovementSystem();
+      this.enemies = new PO.EnemySystem(
+        PO.EnemySystem.createDefaultEnemies(this.player.speed)
+      );
       this.combat = new PO.CombatSystem(PO.CombatSystem.createDefaultTargets());
 
       // 대시 무적 판정 검증용 임시 위험 구역 (코어 시스템과 분리, 미로드 시 자동 생략)
@@ -58,7 +61,14 @@
         this.combat.getUIState(),
         this.player.getDashUIState()
       );
-      this.renderer.render(this.map, this.player, this.combat, this.aimWorld, this.testHazard);
+      this.renderer.render(
+        this.map,
+        this.player,
+        this.combat,
+        this.aimWorld,
+        this.testHazard,
+        this.enemies
+      );
 
       this._rafId = requestAnimationFrame(this._boundTick);
     }
@@ -126,10 +136,14 @@
         this.movement.tryStartDash(this.player, moveVector);
       }
 
-      // 4. 대시 이동 / 일반 WASD 이동 및 벽·장애물·타겟 충돌 처리
+      // 4. 대시 이동 / 일반 WASD 이동 및 벽·장애물·타겟·생존 적 충돌 처리
+      const circleBlockers = [
+        ...this.combat.getAliveTargets(),
+        ...this.enemies.getAliveEnemies()
+      ];
       this.movement.update(this.player, moveVector, this.map, dt, {
         updateDirection: !this.input.mouse.hasPosition,
-        circleBlockers: this.combat.targets
+        circleBlockers
       });
 
       // 5. 플레이어 상태 타이머(대시 쿨다운 1.2s, 무적 시간 0.25s, 잔상 수명) 업데이트
@@ -138,11 +152,20 @@
       // 6. 이동 완료 후 플레이어 최신 좌표 기준으로 조준각 재보정
       this._updateAimFromMouse();
 
-      // 7. 공격 판정, 투사체 이동/벽 충돌, 쿨다운, 타겟 피격 업데이트
+      // 7. 공격 판정, 투사체 이동/벽 충돌, 쿨다운, 타겟 및 생존 적 피격 업데이트
       const shouldAttack = this.input.consumeAttackInput();
-      this.combat.update(dt, this.player, this.map, shouldAttack);
+      this.combat.update(
+        dt,
+        this.player,
+        this.map,
+        shouldAttack,
+        this.enemies.getAliveEnemies()
+      );
 
-      // 8. 임시 무적 테스트용 위험 구역 판정 (분리된 선택 모듈)
+      // 8. 적 AI 상태 전이(Idle/Patrol/Chase/Dead), 플레이어 추적 및 장애물 회피 업데이트
+      this.enemies.update(dt, this.player, this.map, this.combat.getAliveTargets());
+
+      // 9. 임시 무적 테스트용 위험 구역 판정 (분리된 선택 모듈)
       if (this.testHazard) {
         this.testHazard.update(dt, this.player);
       }
@@ -157,7 +180,14 @@
     }
 
     render() {
-      this.renderer.render(this.map, this.player, this.combat, this.aimWorld, this.testHazard);
+      this.renderer.render(
+        this.map,
+        this.player,
+        this.combat,
+        this.aimWorld,
+        this.testHazard,
+        this.enemies
+      );
     }
   }
 

@@ -180,7 +180,7 @@
     /**
      * 현재 공격 시도 (마우스 좌클릭 입력 시 호출)
      */
-    tryAttack(player, officeMap) {
+    tryAttack(player, officeMap, aliveEnemies = []) {
       const weaponState = this.getCurrentWeaponState();
       const cfg = weaponState.config;
 
@@ -190,7 +190,7 @@
       }
 
       if (cfg.type === 'melee') {
-        this._performMeleeAttack(player, weaponState);
+        this._performMeleeAttack(player, weaponState, aliveEnemies);
         return true;
       }
 
@@ -202,14 +202,14 @@
           return false;
         }
 
-        this._performRangedAttack(player, weaponState, officeMap);
+        this._performRangedAttack(player, weaponState, officeMap, aliveEnemies);
         return true;
       }
 
       return false;
     }
 
-    _performMeleeAttack(player, weaponState) {
+    _performMeleeAttack(player, weaponState, aliveEnemies = []) {
       const cfg = weaponState.config;
       weaponState.cooldownRemaining = cfg.cooldown;
 
@@ -235,7 +235,7 @@
       this._spawnMeleeSwingEffect(player, cfg, arcRad);
 
       // 생성 직후 첫 프레임 즉시 판정 수행
-      this._checkMeleeSwingHits(swing);
+      this._checkMeleeSwingHits(swing, aliveEnemies);
     }
 
     _spawnMeleeSwingEffect(player, cfg, arcRad) {
@@ -251,7 +251,7 @@
       });
     }
 
-    _performRangedAttack(player, weaponState, officeMap) {
+    _performRangedAttack(player, weaponState, officeMap, aliveEnemies = []) {
       const cfg = weaponState.config;
       weaponState.ammo = Math.max(0, weaponState.ammo - 1);
       weaponState.cooldownRemaining = cfg.cooldown;
@@ -276,8 +276,8 @@
         alive: true
       };
 
-      // 발사 위치가 이미 벽/장애물/타겟에 닿아 있는 초근접 상태인지 즉시 검사
-      if (!this._checkProjectileCollision(projectile, officeMap)) {
+      // 발사 위치가 이미 벽/장애물/타겟/적에 닿아 있는 초근접 상태인지 즉시 검사
+      if (!this._checkProjectileCollision(projectile, officeMap, aliveEnemies)) {
         this.projectiles.push(projectile);
       }
     }
@@ -304,7 +304,7 @@
     /**
      * 매 프레임 공격 시스템 업데이트
      */
-    update(dt, player, officeMap, shouldTriggerAttack) {
+    update(dt, player, officeMap, shouldTriggerAttack, aliveEnemies = []) {
       // 1. 모든 무기 슬롯 쿨다운 감소
       const slots = [1, 2];
       for (let i = 0; i < slots.length; i++) {
@@ -316,7 +316,7 @@
 
       // 2. 공격 입력 처리
       if (shouldTriggerAttack) {
-        this.tryAttack(player, officeMap);
+        this.tryAttack(player, officeMap, aliveEnemies);
       }
 
       // 3. 활성 근접 공격 판정 갱신 (판정 유지 시간 동안만 활성 후 제거)
@@ -330,14 +330,14 @@
         swing.isHitboxActive = swing.elapsed <= swing.activeDuration;
 
         if (swing.isHitboxActive) {
-          this._checkMeleeSwingHits(swing);
+          this._checkMeleeSwingHits(swing, aliveEnemies);
         } else {
           this.meleeSwings.splice(i, 1);
         }
       }
 
-      // 4. 원거리 투사체 이동 및 충돌(벽, 장애물, 테스트 타겟) 처리
-      this._updateProjectiles(dt, officeMap);
+      // 4. 원거리 투사체 이동 및 충돌(벽, 장애물, 테스트 타겟, 적) 처리
+      this._updateProjectiles(dt, officeMap, aliveEnemies);
 
       // 5. 테스트 타겟 상태 갱신 (체력 0 이하 타겟 제거)
       for (let i = this.targets.length - 1; i >= 0; i--) {
@@ -354,24 +354,31 @@
     }
 
     /**
-     * 부채꼴(거리 + 각도) 영역 내 테스트 타겟 피격 검사
+     * 부채꼴(거리 + 각도) 영역 내 테스트 타겟 및 생존 중인 적 피격 검사
      */
-    _checkMeleeSwingHits(swing) {
+    _checkMeleeSwingHits(swing, aliveEnemies = []) {
       const halfArc = swing.arcRad * 0.5;
       const cosDir = Math.cos(swing.angle);
 
-      for (let i = 0; i < this.targets.length; i++) {
-        const target = this.targets[i];
-        if (!target.alive || swing.hitTargetIds.has(target.id)) {
+      this._checkMeleeSwingAgainstList(swing, this.targets, halfArc, cosDir);
+      if (aliveEnemies && aliveEnemies.length > 0) {
+        this._checkMeleeSwingAgainstList(swing, aliveEnemies, halfArc, cosDir);
+      }
+    }
+
+    _checkMeleeSwingAgainstList(swing, entities, halfArc, cosDir) {
+      for (let i = 0; i < entities.length; i++) {
+        const entity = entities[i];
+        if (!entity.alive || swing.hitTargetIds.has(entity.id)) {
           continue;
         }
 
-        const dx = target.position.x - swing.x;
-        const dy = target.position.y - swing.y;
+        const dx = entity.position.x - swing.x;
+        const dy = entity.position.y - swing.y;
         const dist = Math.hypot(dx, dy);
 
-        // 부채꼴 최대 도달 거리(공격 거리 + 타겟 반경) 검사
-        if (dist > swing.range + target.radius) {
+        // 부채꼴 최대 도달 거리(공격 거리 + 대상 반경) 검사
+        if (dist > swing.range + entity.radius) {
           continue;
         }
 
@@ -379,22 +386,22 @@
         if (dist > 1e-5) {
           const angleToTarget = Math.atan2(dy, dx);
           const angleDiff = Math.abs(this._normalizeAngle(angleToTarget - swing.angle));
-          const radiusAnglePadding = Math.min(0.2, Math.atan2(target.radius * 0.5, dist));
+          const radiusAnglePadding = Math.min(0.2, Math.atan2(entity.radius * 0.5, dist));
 
           if (angleDiff > halfArc + radiusAnglePadding) {
             continue;
           }
         }
 
-        swing.hitTargetIds.add(target.id);
-        this._applyHitToTarget(target, swing.damage, 'melee', cosDir);
+        swing.hitTargetIds.add(entity.id);
+        this._applyHitToTarget(entity, swing.damage, 'melee', cosDir);
       }
     }
 
     /**
-     * 투사체 서브스테핑 이동 및 벽/장애물/타겟 충돌 검사
+     * 투사체 서브스테핑 이동 및 벽/장애물/타겟/적 충돌 검사
      */
-    _updateProjectiles(dt, officeMap) {
+    _updateProjectiles(dt, officeMap, aliveEnemies = []) {
       if (dt <= 0) {
         return;
       }
@@ -412,7 +419,7 @@
           proj.x += proj.vx * stepDt;
           proj.y += proj.vy * stepDt;
 
-          if (this._checkProjectileCollision(proj, officeMap)) {
+          if (this._checkProjectileCollision(proj, officeMap, aliveEnemies)) {
             proj.alive = false;
             break;
           }
@@ -425,10 +432,10 @@
     }
 
     /**
-     * 단일 투사체의 벽, 장애물, 테스트 타겟 충돌 판정
+     * 단일 투사체의 벽, 장애물, 테스트 타겟, 적 충돌 판정
      * @returns {boolean} 충돌하여 제거되어야 하면 true
      */
-    _checkProjectileCollision(proj, officeMap) {
+    _checkProjectileCollision(proj, officeMap, aliveEnemies = []) {
       const r = proj.radius;
       const floor = officeMap.floorRect;
 
@@ -470,16 +477,33 @@
         }
       }
 
+      // 4. 생존 중인 적 충돌 검사 (사망한 적은 판정 제외)
+      for (let i = 0; i < aliveEnemies.length; i++) {
+        const enemy = aliveEnemies[i];
+        if (!enemy.alive) {
+          continue;
+        }
+
+        const dist = Math.hypot(proj.x - enemy.position.x, proj.y - enemy.position.y);
+        if (dist <= r + enemy.radius) {
+          const hitDirX = proj.vx >= 0 ? 1 : -1;
+          this._applyHitToTarget(enemy, proj.damage, 'ranged', hitDirX);
+          this._spawnImpactEffect(proj.x, proj.y - 22, '#38bdf8', 15);
+          return true;
+        }
+      }
+
       return false;
     }
 
     _applyHitToTarget(target, damage, attackKind, hitDirX) {
       target.takeDamage(damage, hitDirX);
 
-      // 피해량 확인용 플로팅 데미지 텍스트 생성 (타겟 상단 체력 수치 위쪽에서 떠오름)
+      // 피해량 확인용 플로팅 데미지 텍스트 생성 (상단 체력 표시 위쪽에서 떠오름)
+      const popupOffsetY = target.isEnemy ? -92 : -82;
       this.damagePopups.push({
         x: target.position.x + (Math.random() - 0.5) * 10,
-        y: target.position.y - 82,
+        y: target.position.y + popupOffsetY,
         text: `-${damage}`,
         color: attackKind === 'melee' ? '#fbbf24' : '#38bdf8',
         elapsed: 0,
@@ -491,9 +515,11 @@
         this._spawnImpactEffect(target.position.x, target.position.y - 22, '#fbbf24', 16);
       }
 
-      // 체력이 0이 되어 제거될 때 파괴 연출 이펙트
+      // 체력이 0이 되어 처치/제거될 때 연출 이펙트
       if (!target.alive) {
-        this._spawnImpactEffect(target.position.x, target.position.y - 18, '#f43f5e', 26);
+        const burstColor = target.isEnemy ? '#c084fc' : '#f43f5e';
+        const burstRadius = target.isEnemy ? 30 : 26;
+        this._spawnImpactEffect(target.position.x, target.position.y - 20, burstColor, burstRadius);
       }
     }
 
