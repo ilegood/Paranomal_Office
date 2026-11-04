@@ -224,6 +224,82 @@ body {
   transform: translateY(1px);
 }
 
+.keycap-space {
+  width: 72px;
+  height: 17px;
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+}
+
+/* 하단 중앙 대시 상태 패널 */
+.dash-panel {
+  padding: 8px 13px;
+  min-width: clamp(185px, 18vw, 225px);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.dash-panel.is-dashing {
+  border-color: #38bdf8;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.35), 0 4px 0 rgba(8, 10, 18, 0.85);
+}
+
+.dash-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: clamp(11px, 0.92vw, 12.5px);
+  font-weight: 800;
+}
+
+.dash-title {
+  color: #e2e8f0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.dash-title kbd {
+  font-family: inherit;
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #232c45;
+  border: 1.5px solid #485882;
+  color: #cbd5e1;
+}
+
+.dash-status-text {
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(10.5px, 0.88vw, 12px);
+  color: #fbbf24;
+}
+
+.dash-status-text.is-ready {
+  color: #4ade80;
+}
+
+.dash-status-text.is-dashing {
+  color: #67e8f9;
+}
+
+.dash-bar-fill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, #0284c7 0%, #38bdf8 100%);
+  border-radius: 3px;
+}
+
+.dash-bar-fill.is-ready {
+  background: linear-gradient(90deg, #22c55e 0%, #4ade80 100%);
+}
+
+.dash-bar-fill.is-dashing {
+  background: linear-gradient(90deg, #67e8f9 0%, #e0f2fe 100%);
+}
+
 .controls-text-group {
   display: flex;
   flex-direction: column;

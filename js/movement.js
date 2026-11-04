@@ -4,11 +4,50 @@
   const PO = (global.PO = global.PO || {});
 
   /**
-   * 플레이어 이동, 방향 갱신, 맵 경계 제한 및 장애물 충돌(슬라이딩) 처리를 담당하는 모듈
+   * 플레이어 일반 이동, 대시(Dash) 이동, 맵 경계 제한 및 장애물 충돌(슬라이딩) 처리를 담당하는 모듈
    */
   class MovementSystem {
     /**
-     * 프레임 단위 이동 업데이트
+     * 대시 실행 시도
+     * 방향 결정 우선순위:
+     *   1순위: WASD 이동 입력이 존재하면 해당 정규화 방향
+     *   2순위: WASD 입력이 없으면 현재 플레이어가 바라보는 방향(player.direction)
+     */
+    tryStartDash(player, inputVector) {
+      if (!player.canDash()) {
+        return false;
+      }
+
+      let dashDirX = 0;
+      let dashDirY = 0;
+
+      const inputLen = Math.hypot(inputVector.x, inputVector.y);
+      if (inputLen > 1e-6) {
+        // 1순위: WASD 입력 방향 (대각선 포함 단위 벡터 정규화)
+        dashDirX = inputVector.x / inputLen;
+        dashDirY = inputVector.y / inputLen;
+      } else {
+        // 2순위: 현재 바라보는 방향
+        const faceLen = Math.hypot(player.direction.x, player.direction.y);
+        if (faceLen > 1e-6) {
+          dashDirX = player.direction.x / faceLen;
+          dashDirY = player.direction.y / faceLen;
+        } else {
+          dashDirX = 0;
+          dashDirY = 1;
+        }
+      }
+
+      const started = player.startDash(dashDirX, dashDirY);
+      if (started) {
+        // 대시 이동 시작과 별개로 무적 상태를 명시적으로 시작
+        player.startInvincibility(player.invincibility.duration);
+      }
+      return started;
+    }
+
+    /**
+     * 프레임 단위 이동 업데이트 (대시 이동 및 일반 WASD 이동 통합 처리)
      * @param {PO.Player} player
      * @param {{x: number, y: number}} inputVector
      * @param {PO.OfficeMap} officeMap
@@ -22,6 +61,45 @@
 
       const updateDirection = options.updateDirection !== false;
       const circleBlockers = options.circleBlockers || [];
+      let remainingDt = dt;
+
+      // 1. 대시 이동 처리 (활성 대시 시간이 남아 있는 동안 우선 적용)
+      if (player.dash.isDashing) {
+        const dashDt = Math.min(remainingDt, player.dash.timer);
+        const dashSpeed = player.speed * player.dash.speedMultiplier;
+
+        player.velocity.x = player.dash.dirX * dashSpeed;
+        player.velocity.y = player.dash.dirY * dashSpeed;
+        player.isMoving = true;
+
+        if (updateDirection) {
+          player.setDirection(player.dash.dirX, player.dash.dirY);
+        }
+
+        const dashMoveX = player.velocity.x * dashDt;
+        const dashMoveY = player.velocity.y * dashDt;
+        this._applyMovementWithCollisions(player, dashMoveX, dashMoveY, officeMap, circleBlockers);
+
+        // 대시 잔상 주기적 생성
+        const afterimageInterval = (PO.DASH_CONFIG && PO.DASH_CONFIG.afterimageInterval) || 0.028;
+        player.dash.afterimageSpawnTimer += dashDt;
+        while (player.dash.afterimageSpawnTimer >= afterimageInterval) {
+          player.dash.afterimageSpawnTimer -= afterimageInterval;
+          player.spawnAfterimage();
+        }
+
+        player.dash.timer -= dashDt;
+        if (player.dash.timer <= 1e-8) {
+          player.endDashMovement();
+        }
+
+        remainingDt -= dashDt;
+        if (remainingDt <= 1e-8) {
+          return;
+        }
+      }
+
+      // 2. 일반 WASD 이동 처리
       const rawLen = Math.hypot(inputVector.x, inputVector.y);
 
       if (rawLen > 1e-6) {
@@ -33,11 +111,10 @@
         player.velocity.y = dirY * player.speed;
         player.isMoving = true;
 
-        // 마우스 조준 전 초기 상태에서는 이동 방향으로 캐릭터 방향 갱신
         if (updateDirection) {
           player.setDirection(dirX, dirY);
         }
-        player.walkPhase += dt * 11.5;
+        player.walkPhase += remainingDt * 11.5;
       } else {
         // 키를 놓으면 즉시 정지
         player.velocity.x = 0;
@@ -47,45 +124,58 @@
         return;
       }
 
-      const moveX = player.velocity.x * dt;
-      const moveY = player.velocity.y * dt;
+      const moveX = player.velocity.x * remainingDt;
+      const moveY = player.velocity.y * remainingDt;
+      this._applyMovementWithCollisions(player, moveX, moveY, officeMap, circleBlockers);
+    }
 
-      let nextX = player.position.x + moveX;
-      let nextY = player.position.y + moveY;
+    /**
+     * 고속 대시에서도 벽/장애물 터널링이 발생하지 않도록 서브스테핑 및 다중 패스 충돌 해결 적용
+     */
+    _applyMovementWithCollisions(player, moveX, moveY, officeMap, circleBlockers) {
+      const totalDist = Math.hypot(moveX, moveY);
+      const steps = Math.max(1, Math.ceil(totalDist / 10));
+      const stepX = moveX / steps;
+      const stepY = moveY / steps;
 
       const radius = player.colliderRadius;
       const bounds = officeMap.getPlayableBounds(radius);
       const obstacles = officeMap.getSolidObstacles();
 
-      // 다중 패스 원형(발)-사각형(장애물 바닥) 및 원형(타겟) 충돌 해결, 맵 경계 클램핑
-      // 벽이나 책상 모서리에 비스듬히 부딪혀도 자연스럽게 미끄러지며 절대 관통하지 않음
-      for (let iter = 0; iter < 3; iter++) {
-        nextX = this._clamp(nextX, bounds.minX, bounds.maxX);
-        nextY = this._clamp(nextY, bounds.minY, bounds.maxY);
+      let nextX = player.position.x;
+      let nextY = player.position.y;
 
-        for (let i = 0; i < circleBlockers.length; i++) {
-          const blocker = circleBlockers[i];
-          if (!blocker.alive) continue;
-          const resolvedCircle = this._resolveCircleCircle(
-            nextX,
-            nextY,
-            radius,
-            blocker.position.x,
-            blocker.position.y,
-            blocker.radius
-          );
-          nextX = resolvedCircle.x;
-          nextY = resolvedCircle.y;
-        }
+      for (let s = 0; s < steps; s++) {
+        nextX += stepX;
+        nextY += stepY;
 
-        for (let i = 0; i < obstacles.length; i++) {
-          const resolved = this._resolveCircleRect(nextX, nextY, radius, obstacles[i]);
-          nextX = resolved.x;
-          nextY = resolved.y;
+        for (let iter = 0; iter < 3; iter++) {
+          nextX = this._clamp(nextX, bounds.minX, bounds.maxX);
+          nextY = this._clamp(nextY, bounds.minY, bounds.maxY);
+
+          for (let i = 0; i < circleBlockers.length; i++) {
+            const blocker = circleBlockers[i];
+            if (!blocker.alive) continue;
+            const resolvedCircle = this._resolveCircleCircle(
+              nextX,
+              nextY,
+              radius,
+              blocker.position.x,
+              blocker.position.y,
+              blocker.radius
+            );
+            nextX = resolvedCircle.x;
+            nextY = resolvedCircle.y;
+          }
+
+          for (let i = 0; i < obstacles.length; i++) {
+            const resolved = this._resolveCircleRect(nextX, nextY, radius, obstacles[i]);
+            nextX = resolved.x;
+            nextY = resolved.y;
+          }
         }
       }
 
-      // 최종 경계 보정
       player.position.x = this._clamp(nextX, bounds.minX, bounds.maxX);
       player.position.y = this._clamp(nextY, bounds.minY, bounds.maxY);
     }
@@ -135,7 +225,6 @@
         return { x: cx, y: cy };
       }
 
-      // 원의 중심이 사각형 외부에 있는 일반적인 충돌 케이스
       if (distSq > 1e-8) {
         const dist = Math.sqrt(distSq);
         const overlap = radius - dist;
@@ -145,7 +234,6 @@
         };
       }
 
-      // 원의 중심이 사각형 내부까지 들어간 예외 케이스 (가장 가까운 변으로 밀어냄)
       const penLeft = cx - left;
       const penRight = right - cx;
       const penTop = cy - top;
@@ -171,4 +259,3 @@
 
   PO.MovementSystem = MovementSystem;
 })(window);
-

@@ -13,8 +13,12 @@
         up: false,
         down: false,
         left: false,
-        right: false
+        right: false,
+        dash: false
       };
+
+      // 대시 단발 입력 버퍼 (Space 키)
+      this.dashBuffered = false;
 
       // 마우스 조준 및 좌클릭 공격 상태
       this.mouse = {
@@ -108,6 +112,15 @@
         return;
       }
 
+      if (event.code === 'Space' || event.key === ' ') {
+        event.preventDefault();
+        this.keys.dash = true;
+        if (!event.repeat) {
+          this.dashBuffered = true;
+        }
+        return;
+      }
+
       const slot = this._resolveWeaponSlot(event);
       if (slot !== null) {
         event.preventDefault();
@@ -125,6 +138,11 @@
     }
 
     _handleKeyUp(event) {
+      if (event.code === 'Space' || event.key === ' ') {
+        this.keys.dash = false;
+        return;
+      }
+
       const action = this._resolveMoveAction(event);
       if (!action) {
         return;
@@ -166,9 +184,20 @@
       this.keys.down = false;
       this.keys.left = false;
       this.keys.right = false;
+      this.keys.dash = false;
+      this.dashBuffered = false;
       this.mouse.leftDown = false;
       this.mouse.attackBuffered = false;
       this.pendingWeaponSlot = null;
+    }
+
+    /**
+     * Space 대시 입력이 있었는지 확인하고 버퍼를 소비
+     */
+    consumeDashInput() {
+      const triggered = this.dashBuffered;
+      this.dashBuffered = false;
+      return triggered;
     }
 
     /**
@@ -222,6 +251,7 @@
         down: this.keys.down,
         left: this.keys.left,
         right: this.keys.right,
+        dash: this.keys.dash,
         leftClick: this.mouse.leftDown
       };
     }

@@ -69,7 +69,7 @@
     /**
      * 전체 프레임 렌더링
      */
-    render(officeMap, player, combat = null, aimWorld = null) {
+    render(officeMap, player, combat = null, aimWorld = null, testHazard = null) {
       const ctx = this.ctx;
       ctx.save();
       ctx.setTransform(this.scale * this.dpr, 0, 0, this.scale * this.dpr, 0, 0);
@@ -80,7 +80,10 @@
       // 2. 북쪽(뒷면) 벽면 및 좌/우 외벽
       this._drawBackAndSideWalls(ctx, officeMap);
 
-      // 3. 바닥 그림자, 근접 공격 범위 바닥 표시 및 플레이어 조준 방향 표시
+      // 3. 임시 무적 테스트 위험 구역, 바닥 그림자, 근접 범위 및 조준 방향 표시
+      if (testHazard) {
+        testHazard.renderFloor(ctx);
+      }
       this._drawShadows(ctx, officeMap, player, combat);
       if (combat) {
         this._drawMeleeGroundSector(ctx, combat);
@@ -97,6 +100,18 @@
           sortY: obs.y + obs.height,
           data: obs
         });
+      }
+
+      // 대시 잔상도 Y-정렬 큐에 포함하여 책상/기둥 전후 원근 유지
+      if (player.dash && player.dash.afterimages.length > 0) {
+        for (let i = 0; i < player.dash.afterimages.length; i++) {
+          const ghost = player.dash.afterimages[i];
+          renderQueue.push({
+            kind: 'afterimage',
+            sortY: ghost.y - 0.1,
+            data: ghost
+          });
+        }
       }
 
       if (combat) {
@@ -139,6 +154,9 @@
           case 'obstacle':
             this._drawObstacle(ctx, item.data);
             break;
+          case 'afterimage':
+            this._drawPlayerAfterimage(ctx, item.data);
+            break;
           case 'target':
             this._drawTestTarget(ctx, item.data);
             break;
@@ -158,6 +176,9 @@
         this._drawMeleeSlashArc(ctx, combat);
         this._drawImpactEffects(ctx, combat);
         this._drawDamagePopups(ctx, combat);
+      }
+      if (testHazard) {
+        testHazard.renderPopups(ctx);
       }
 
       // 6. 남쪽(전면) 단면 벽 및 야근 조명 비네팅
@@ -709,7 +730,36 @@
     }
 
     /**
+     * 대시 중 생성되는 카툰 실루엣 잔상 렌더링
+     */
+    _drawPlayerAfterimage(ctx, ghost) {
+      const progress = Math.min(1, ghost.elapsed / ghost.duration);
+      const alpha = (1 - progress) * 0.42;
+
+      ctx.save();
+      ctx.translate(ghost.x, ghost.y);
+      ctx.globalAlpha = Math.max(0, alpha);
+
+      // 발과 몸통, 머리 실루엣을 민트/하늘색 잔상으로 표현
+      ctx.fillStyle = '#38bdf8';
+      ctx.strokeStyle = '#bae6fd';
+      ctx.lineWidth = 1.5;
+
+      this._traceRoundRect(ctx, -12, -30, 24, 23, 6);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(0, -42, 12.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.restore();
+    }
+
+    /**
      * 카툰 스타일 회사원 플레이어 및 장착 무기 렌더링 (단순 도형 조합)
+     * 대시 중 속도선 효과 및 무적 시간 동안 투명도·색상 변경 표현 포함
      */
     _drawPlayer(ctx, player, weaponId = null) {
       const px = player.position.x;
@@ -717,13 +767,57 @@
       const dirX = player.direction.x;
       const dirY = player.direction.y;
 
+      const isDashing = Boolean(player.dash && player.dash.isDashing);
+      const isInvincible = Boolean(player.isInvulnerable && player.isInvulnerable());
+      const isHurt = player.hurtFlashTimer > 0;
+
       const isMoving = player.isMoving;
-      const bounce = isMoving ? Math.abs(Math.sin(player.walkPhase)) * 2.5 : 0;
+      const bounce = isDashing ? 2 : isMoving ? Math.abs(Math.sin(player.walkPhase)) * 2.5 : 0;
       const stride = isMoving ? Math.sin(player.walkPhase) * 3.5 : 0;
       const facingBack = dirY < -0.55;
 
       ctx.save();
       ctx.translate(px, py);
+
+      // 대시 중 속도선(Speed lines) 도형 표시
+      if (isDashing) {
+        const backX = -player.dash.dirX;
+        const backY = -player.dash.dirY;
+        const perpX = -backY;
+        const perpY = backX;
+
+        ctx.strokeStyle = 'rgba(186, 230, 253, 0.85)';
+        ctx.lineWidth = 2.4;
+        ctx.lineCap = 'round';
+        const offsets = [-12, 0, 11];
+        const lengths = [22, 30, 20];
+
+        for (let i = 0; i < offsets.length; i++) {
+          const ox = perpX * offsets[i] + backX * 12;
+          const oy = -22 + perpY * offsets[i] * 0.7 + backY * 12;
+          ctx.beginPath();
+          ctx.moveTo(ox, oy);
+          ctx.lineTo(ox + backX * lengths[i], oy + backY * lengths[i]);
+          ctx.stroke();
+        }
+      }
+
+      // 무적 상태 시 외곽 실드 링 및 반투명 처리 (무적 종료 시 즉시 원래 외형으로 복귀)
+      if (isInvincible) {
+        ctx.strokeStyle = 'rgba(103, 232, 249, 0.85)';
+        ctx.fillStyle = 'rgba(56, 189, 248, 0.14)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.ellipse(0, -24 - bounce, 21, 29, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.globalAlpha = 0.66;
+      }
+
+      const outlineColor = isInvincible ? '#0ea5e9' : OUTLINE_COLOR;
+      const shirtColor = isInvincible ? '#bae6fd' : isHurt ? '#fecdd3' : '#f1f5f9';
+      const sleeveColor = isInvincible ? '#7dd3fc' : isHurt ? '#fda4af' : '#e2e8f0';
 
       // 위쪽을 조준할 때는 무기가 몸통 뒤쪽에 자연스럽게 위치하도록 먼저 렌더링
       if (weaponId && facingBack) {
@@ -731,23 +825,23 @@
       }
 
       // 1. 다리 / 구두 (검은 정장 바지 & 구두 도형)
-      this._fillStrokeRoundRect(ctx, -9, -9 + stride * 0.5, 7, 10, 3, '#1e2436', OUTLINE_COLOR, 2.2);
-      this._fillStrokeRoundRect(ctx, 2, -9 - stride * 0.5, 7, 10, 3, '#1e2436', OUTLINE_COLOR, 2.2);
+      this._fillStrokeRoundRect(ctx, -9, -9 + stride * 0.5, 7, 10, 3, '#1e2436', outlineColor, 2.2);
+      this._fillStrokeRoundRect(ctx, 2, -9 - stride * 0.5, 7, 10, 3, '#1e2436', outlineColor, 2.2);
 
-      // 2. 몸통 (흰색 와이셔츠 + 정장 바지 허리선)
+      // 2. 몸통 (와이셔츠 + 정장 바지 허리선)
       const bodyTop = -30 - bounce;
-      this._fillStrokeRoundRect(ctx, -12, bodyTop, 24, 23, 6, '#f1f5f9', OUTLINE_COLOR, 2.5);
+      this._fillStrokeRoundRect(ctx, -12, bodyTop, 24, 23, 6, shirtColor, outlineColor, 2.5);
 
       // 바지 상단 벨트라인
-      this._fillStrokeRect(ctx, -11, bodyTop + 16, 22, 7, '#283147', OUTLINE_COLOR, 2);
+      this._fillStrokeRect(ctx, -11, bodyTop + 16, 22, 7, '#283147', outlineColor, 2);
 
       // 3. 정면/측면일 때 붉은 넥타이 및 사원증 표시 (방향에 따라 수평 오프셋)
       if (!facingBack) {
         const tieOffsetX = dirX * 4.5;
 
         // 붉은 넥타이
-        ctx.fillStyle = '#e11d48';
-        ctx.strokeStyle = OUTLINE_COLOR;
+        ctx.fillStyle = isInvincible ? '#38bdf8' : '#e11d48';
+        ctx.strokeStyle = outlineColor;
         ctx.lineWidth = 1.6;
         ctx.beginPath();
         ctx.moveTo(tieOffsetX, bodyTop + 2);
@@ -773,15 +867,15 @@
 
       // 4. 양팔 (간단한 둥근 캡슐 소매)
       const armSwing = isMoving ? Math.sin(player.walkPhase) * 2.5 : 0;
-      this._fillStrokeRoundRect(ctx, -16, bodyTop + 3 - armSwing * 0.6, 6, 13, 3, '#e2e8f0', OUTLINE_COLOR, 2.2);
-      this._fillStrokeRoundRect(ctx, 10, bodyTop + 3 + armSwing * 0.6, 6, 13, 3, '#e2e8f0', OUTLINE_COLOR, 2.2);
+      this._fillStrokeRoundRect(ctx, -16, bodyTop + 3 - armSwing * 0.6, 6, 13, 3, sleeveColor, outlineColor, 2.2);
+      this._fillStrokeRoundRect(ctx, 10, bodyTop + 3 + armSwing * 0.6, 6, 13, 3, sleeveColor, outlineColor, 2.2);
 
       // 5. 머리 (둥근 카툰 헤드)
       const headY = -42 - bounce;
       const headRadius = 13;
 
-      ctx.fillStyle = '#fbd3b6';
-      ctx.strokeStyle = OUTLINE_COLOR;
+      ctx.fillStyle = isInvincible ? '#e0f2fe' : '#fbd3b6';
+      ctx.strokeStyle = outlineColor;
       ctx.lineWidth = 2.5;
       ctx.beginPath();
       ctx.arc(0, headY, headRadius, 0, Math.PI * 2);

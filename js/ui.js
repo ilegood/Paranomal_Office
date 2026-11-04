@@ -4,7 +4,7 @@
   const PO = (global.PO = global.PO || {});
 
   /**
-   * HUD UI(체력 바, WASD 조작 표시, 장착 무기/공격 방식/탄약/쿨다운 상태)를 실제 게임 데이터와 동기화하는 모듈
+   * HUD UI(체력 바, WASD/Space 조작 표시, 대시 상태, 장착 무기/공격 방식/탄약/쿨다운 상태) 동기화 모듈
    */
   class UIManager {
     constructor() {
@@ -15,8 +15,14 @@
         up: document.getElementById('key-w'),
         left: document.getElementById('key-a'),
         down: document.getElementById('key-s'),
-        right: document.getElementById('key-d')
+        right: document.getElementById('key-d'),
+        dash: document.getElementById('key-space')
       };
+
+      // 대시 UI 요소
+      this.dashPanelEl = document.getElementById('dash-panel');
+      this.dashStatusTextEl = document.getElementById('dash-status-text');
+      this.dashFillEl = document.getElementById('dash-cooldown-fill');
 
       // 공격/무기 UI 요소
       this.slotTab1El = document.getElementById('slot-tab-1');
@@ -34,8 +40,13 @@
         up: false,
         left: false,
         down: false,
-        right: false
+        right: false,
+        dash: false
       };
+
+      this._lastDashLabel = null;
+      this._lastDashPercent = null;
+      this._lastDashMode = null;
 
       this._lastWeaponSlot = null;
       this._lastAmmo = null;
@@ -45,15 +56,19 @@
     }
 
     /**
-     * 플레이어의 체력, 입력 상태, 무기/공격 상태를 UI에 반영
+     * 플레이어의 체력, 입력 상태, 무기/공격 상태, 대시 상태를 UI에 반영
      */
-    update(player, inputState, combatUIState = null) {
+    update(player, inputState, combatUIState = null, dashUIState = null) {
       this._syncHealth(player.hp, player.maxHp);
       if (inputState) {
         this._syncKeys(inputState);
       }
       if (combatUIState) {
         this._syncCombat(combatUIState);
+      }
+      const effectiveDashState = dashUIState || (player.getDashUIState ? player.getDashUIState() : null);
+      if (effectiveDashState) {
+        this._syncDash(effectiveDashState);
       }
     }
 
@@ -79,16 +94,61 @@
     }
 
     _syncKeys(state) {
-      const directions = ['up', 'left', 'down', 'right'];
-      for (let i = 0; i < directions.length; i++) {
-        const dir = directions[i];
-        const pressed = Boolean(state[dir]);
-        if (pressed !== this._lastKeyState[dir]) {
-          this._lastKeyState[dir] = pressed;
-          const el = this.keyEls[dir];
+      const keys = ['up', 'left', 'down', 'right', 'dash'];
+      for (let i = 0; i < keys.length; i++) {
+        const k = keys[i];
+        const pressed = Boolean(state[k]);
+        if (pressed !== this._lastKeyState[k]) {
+          this._lastKeyState[k] = pressed;
+          const el = this.keyEls[k];
           if (el) {
             el.classList.toggle('is-pressed', pressed);
           }
+        }
+      }
+    }
+
+    _syncDash(dashState) {
+      let label = '사용 가능';
+      let mode = 'ready';
+      let percent = 100;
+
+      if (dashState.isDashing) {
+        label = '대시 중!';
+        mode = 'dashing';
+        percent = 100;
+      } else if (!dashState.canDash && dashState.cooldownRemaining > 0.005) {
+        label = `쿨다운 ${dashState.cooldownRemaining.toFixed(2)}s`;
+        mode = 'cooling';
+        percent = Math.round(dashState.cooldownRatio * 100);
+      }
+
+      if (label !== this._lastDashLabel) {
+        this._lastDashLabel = label;
+        if (this.dashStatusTextEl) {
+          this.dashStatusTextEl.textContent = label;
+        }
+      }
+
+      if (mode !== this._lastDashMode) {
+        this._lastDashMode = mode;
+        if (this.dashPanelEl) {
+          this.dashPanelEl.classList.toggle('is-dashing', mode === 'dashing');
+        }
+        if (this.dashStatusTextEl) {
+          this.dashStatusTextEl.classList.toggle('is-ready', mode === 'ready');
+          this.dashStatusTextEl.classList.toggle('is-dashing', mode === 'dashing');
+        }
+        if (this.dashFillEl) {
+          this.dashFillEl.classList.toggle('is-ready', mode === 'ready');
+          this.dashFillEl.classList.toggle('is-dashing', mode === 'dashing');
+        }
+      }
+
+      if (percent !== this._lastDashPercent) {
+        this._lastDashPercent = percent;
+        if (this.dashFillEl) {
+          this.dashFillEl.style.width = `${percent}%`;
         }
       }
     }

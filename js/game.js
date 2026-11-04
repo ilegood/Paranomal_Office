@@ -15,7 +15,7 @@
         throw new Error('필수 게임 DOM 요소(#game-stage, #game-canvas)를 찾을 수 없습니다.');
       }
 
-      // 모듈 초기화
+      // 핵심 모듈 초기화
       this.map = new PO.OfficeMap();
       this.player = new PO.Player({
         x: this.map.spawnPoint.x,
@@ -27,6 +27,10 @@
       this.input = new PO.InputManager(window);
       this.movement = new PO.MovementSystem();
       this.combat = new PO.CombatSystem(PO.CombatSystem.createDefaultTargets());
+
+      // 대시 무적 판정 검증용 임시 위험 구역 (코어 시스템과 분리, 미로드 시 자동 생략)
+      this.testHazard = PO.TestDamageZone ? new PO.TestDamageZone() : null;
+
       this.renderer = new PO.Renderer(this.canvas, this.stageElement, this.map);
       this.ui = new PO.UIManager();
 
@@ -48,8 +52,13 @@
       this._lastTimestamp = performance.now();
 
       // 첫 프레임 즉시 동기화 및 렌더링
-      this.ui.update(this.player, this.input.getState(), this.combat.getUIState());
-      this.renderer.render(this.map, this.player, this.combat, this.aimWorld);
+      this.ui.update(
+        this.player,
+        this.input.getState(),
+        this.combat.getUIState(),
+        this.player.getDashUIState()
+      );
+      this.renderer.render(this.map, this.player, this.combat, this.aimWorld, this.testHazard);
 
       this._rafId = requestAnimationFrame(this._boundTick);
     }
@@ -108,26 +117,47 @@
         this.combat.switchWeapon(requestedSlot);
       }
 
-      // 2. WASD 플레이어 이동 및 벽/장애물/타겟 충돌 처리
+      // 2. 대시 전 최신 마우스 조준 방향 반영 (이동 입력 없을 때 조준 방향으로 대시하기 위함)
+      this._updateAimFromMouse();
+
+      // 3. Space 대시 시작 입력 처리
       const moveVector = this.input.getMoveVector();
+      if (this.input.consumeDashInput()) {
+        this.movement.tryStartDash(this.player, moveVector);
+      }
+
+      // 4. 대시 이동 / 일반 WASD 이동 및 벽·장애물·타겟 충돌 처리
       this.movement.update(this.player, moveVector, this.map, dt, {
         updateDirection: !this.input.mouse.hasPosition,
         circleBlockers: this.combat.targets
       });
 
-      // 3. 마우스 커서 방향 조준 갱신 (이동 후 플레이어 최신 좌표 기준으로 조준각 계산)
+      // 5. 플레이어 상태 타이머(대시 쿨다운 1.2s, 무적 시간 0.25s, 잔상 수명) 업데이트
+      this.player.updateStatusTimers(dt);
+
+      // 6. 이동 완료 후 플레이어 최신 좌표 기준으로 조준각 재보정
       this._updateAimFromMouse();
 
-      // 4. 공격 판정, 투사체 이동/벽 충돌, 쿨다운, 타겟 피격 업데이트
+      // 7. 공격 판정, 투사체 이동/벽 충돌, 쿨다운, 타겟 피격 업데이트
       const shouldAttack = this.input.consumeAttackInput();
       this.combat.update(dt, this.player, this.map, shouldAttack);
 
-      // 5. UI 동기화
-      this.ui.update(this.player, this.input.getState(), this.combat.getUIState());
+      // 8. 임시 무적 테스트용 위험 구역 판정 (분리된 선택 모듈)
+      if (this.testHazard) {
+        this.testHazard.update(dt, this.player);
+      }
+
+      // 9. UI 동기화
+      this.ui.update(
+        this.player,
+        this.input.getState(),
+        this.combat.getUIState(),
+        this.player.getDashUIState()
+      );
     }
 
     render() {
-      this.renderer.render(this.map, this.player, this.combat, this.aimWorld);
+      this.renderer.render(this.map, this.player, this.combat, this.aimWorld, this.testHazard);
     }
   }
 
