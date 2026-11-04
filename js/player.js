@@ -42,6 +42,19 @@
 
       // 바닥 충돌 반경 (발 주변 원형 영역)
       this.colliderRadius = config.colliderRadius ?? 16;
+
+      // 쿼터뷰에서 상체/손 높이 기준 마우스 조준 오프셋 (Y축)
+      this.aimOffsetY = -18;
+    }
+
+    /**
+     * 마우스 조준 방향 계산 시 기준이 되는 플레이어 상체/무기 중심 월드 좌표 반환
+     */
+    getAimOrigin() {
+      return {
+        x: this.position.x,
+        y: this.position.y + this.aimOffsetY
+      };
     }
 
     /**

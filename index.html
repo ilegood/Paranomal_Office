@@ -11,7 +11,7 @@
     <div id="game-stage">
       <canvas id="game-canvas" aria-label="야근은 괴담과 함께 게임 화면"></canvas>
 
-      <!-- 기본 UI 오버레이 (Phase 1 필수 요소만 구성) -->
+      <!-- HUD 오버레이 -->
       <div id="hud" aria-live="polite">
         <div class="hud-top">
           <!-- 게임 제목 및 플레이어 체력 표시 -->
@@ -35,12 +35,12 @@
           <!-- 프로토타입 상태 표시 -->
           <aside class="hud-card prototype-badge">
             <span class="status-dot" aria-hidden="true"></span>
-            <span class="prototype-text">PROTOTYPE · Phase 1 (전투 시스템 검증용 · 기본 이동)</span>
+            <span class="prototype-text">PROTOTYPE · Phase 2 (전투 시스템 검증용 · 공격 시스템)</span>
           </aside>
         </div>
 
         <div class="hud-bottom">
-          <!-- 조작 안내: WASD 이동 -->
+          <!-- 조작 안내 -->
           <div class="hud-card controls-guide" aria-label="조작 안내">
             <div class="keycap-group" aria-hidden="true">
               <kbd id="key-w" class="keycap">W</kbd>
@@ -50,8 +50,41 @@
                 <kbd id="key-d" class="keycap">D</kbd>
               </div>
             </div>
-            <span class="controls-label"><strong>WASD</strong> 이동</span>
+            <div class="controls-text-group">
+              <span class="controls-label"><strong>WASD</strong> 이동 · <strong>마우스</strong> 조준</span>
+              <span class="controls-sublabel"><strong>좌클릭</strong> 공격 · <strong>1 / 2</strong> 무기 전환</span>
+            </div>
           </div>
+
+          <!-- 장착 무기 및 공격 상태 UI -->
+          <section id="weapon-panel" class="hud-card weapon-panel" aria-label="장착 무기 정보">
+            <div class="weapon-slot-tabs" aria-hidden="true">
+              <span id="slot-tab-1" class="slot-tab is-active"><kbd>1</kbd> 근접</span>
+              <span id="slot-tab-2" class="slot-tab"><kbd>2</kbd> 원거리</span>
+            </div>
+
+            <div class="weapon-info-main">
+              <div id="weapon-name" class="weapon-name">대형 사무용 스테이플러</div>
+              <div id="weapon-mode" class="weapon-mode">근접 · 부채꼴 타격</div>
+            </div>
+
+            <!-- 원거리 무기 장착 시에만 표시 (근접 무기는 숨김) -->
+            <div id="weapon-ammo-row" class="weapon-stat-row weapon-ammo-row" hidden>
+              <span class="weapon-stat-label">탄약</span>
+              <span id="weapon-ammo" class="weapon-ammo-value">20 / 20</span>
+            </div>
+
+            <!-- 공격 쿨다운 상태 -->
+            <div class="weapon-cooldown-group">
+              <div class="weapon-stat-row">
+                <span class="weapon-stat-label">쿨다운 상태</span>
+                <span id="weapon-cooldown-text" class="weapon-cooldown-text is-ready">공격 가능</span>
+              </div>
+              <div class="cooldown-bar-track">
+                <div id="weapon-cooldown-fill" class="cooldown-bar-fill is-ready" style="width: 100%;"></div>
+              </div>
+            </div>
+          </section>
         </div>
       </div>
     </div>
@@ -62,9 +95,9 @@
   <script src="js/map.js"></script>
   <script src="js/player.js"></script>
   <script src="js/movement.js"></script>
+  <script src="js/combat.js"></script>
   <script src="js/renderer.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/game.js"></script>
 </body>
 </html>
-

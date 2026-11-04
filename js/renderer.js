@@ -48,20 +48,28 @@
     }
 
     /**
-     * 화면 좌표를 게임 월드 좌표로 변환 (추후 마우스 방향 공격 구현 시 활용 가능)
+     * 화면 좌표를 게임 월드 좌표로 변환
+     * 캔버스의 실제 렌더링 위치(rect.left/top)와 크기(rect.width/height)를 기준으로 계산하여
+     * 브라우저 창 크기가 변경되거나 테두리가 있어도 항상 정확한 월드 좌표를 반환한다.
      */
     screenToWorld(clientX, clientY) {
       const rect = this.canvas.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) {
+        return {
+          x: this.officeMap.width * 0.5,
+          y: this.officeMap.height * 0.5
+        };
+      }
       return {
-        x: (clientX - rect.left) / this.scale,
-        y: (clientY - rect.top) / this.scale
+        x: ((clientX - rect.left) / rect.width) * this.officeMap.width,
+        y: ((clientY - rect.top) / rect.height) * this.officeMap.height
       };
     }
 
     /**
      * 전체 프레임 렌더링
      */
-    render(officeMap, player) {
+    render(officeMap, player, combat = null, aimWorld = null) {
       const ctx = this.ctx;
       ctx.save();
       ctx.setTransform(this.scale * this.dpr, 0, 0, this.scale * this.dpr, 0, 0);
@@ -72,8 +80,11 @@
       // 2. 북쪽(뒷면) 벽면 및 좌/우 외벽
       this._drawBackAndSideWalls(ctx, officeMap);
 
-      // 3. 바닥 그림자 및 플레이어 방향 표시 (오브젝트 본체보다 먼저 그림)
-      this._drawShadows(ctx, officeMap, player);
+      // 3. 바닥 그림자, 근접 공격 범위 바닥 표시 및 플레이어 조준 방향 표시
+      this._drawShadows(ctx, officeMap, player, combat);
+      if (combat) {
+        this._drawMeleeGroundSector(ctx, combat);
+      }
       this._drawPlayerDirectionIndicator(ctx, player);
 
       // 4. 쿼터뷰 Y-정렬 렌더링 (발/바닥 Y좌표 기준으로 앞뒤 원근 순서 결정)
@@ -88,26 +99,75 @@
         });
       }
 
+      if (combat) {
+        for (let i = 0; i < combat.targets.length; i++) {
+          const target = combat.targets[i];
+          if (target.alive) {
+            renderQueue.push({
+              kind: 'target',
+              sortY: target.getSortY(),
+              data: target
+            });
+          }
+        }
+
+        for (let i = 0; i < combat.projectiles.length; i++) {
+          const proj = combat.projectiles[i];
+          if (proj.alive) {
+            renderQueue.push({
+              kind: 'projectile',
+              sortY: proj.y,
+              data: proj
+            });
+          }
+        }
+      }
+
+      const equippedWeaponId = combat ? combat.getCurrentWeaponState().config.id : null;
       renderQueue.push({
         kind: 'player',
         sortY: player.getSortY(),
-        data: player
+        data: player,
+        weaponId: equippedWeaponId
       });
 
       renderQueue.sort((a, b) => a.sortY - b.sortY);
 
       for (let i = 0; i < renderQueue.length; i++) {
         const item = renderQueue[i];
-        if (item.kind === 'obstacle') {
-          this._drawObstacle(ctx, item.data);
-        } else {
-          this._drawPlayer(ctx, item.data);
+        switch (item.kind) {
+          case 'obstacle':
+            this._drawObstacle(ctx, item.data);
+            break;
+          case 'target':
+            this._drawTestTarget(ctx, item.data);
+            break;
+          case 'projectile':
+            this._drawProjectile(ctx, item.data);
+            break;
+          case 'player':
+            this._drawPlayer(ctx, item.data, item.weaponId);
+            break;
+          default:
+            break;
         }
       }
 
-      // 5. 남쪽(전면) 단면 벽 및 야근 조명 비네팅
+      // 5. 근접 휘두르기 궤적, 피격 스파크, 플로팅 피해량 수치
+      if (combat) {
+        this._drawMeleeSlashArc(ctx, combat);
+        this._drawImpactEffects(ctx, combat);
+        this._drawDamagePopups(ctx, combat);
+      }
+
+      // 6. 남쪽(전면) 단면 벽 및 야근 조명 비네팅
       this._drawForegroundWall(ctx, officeMap);
       this._drawNightAtmosphere(ctx, officeMap);
+
+      // 7. 마우스 조준선(크로스헤어) 표시
+      if (aimWorld) {
+        this._drawAimCrosshair(ctx, aimWorld, equippedWeaponId);
+      }
 
       ctx.restore();
     }
@@ -391,13 +451,33 @@
       ctx.fillRect(0, 0, width, height);
     }
 
-    _drawShadows(ctx, officeMap, player) {
+    _drawShadows(ctx, officeMap, player, combat) {
       ctx.fillStyle = 'rgba(7, 9, 16, 0.45)';
 
       // 장애물 바닥 그림자 (쿼터뷰 입체감을 위해 우하단 오프셋)
       for (let i = 0; i < officeMap.obstacles.length; i++) {
         const obs = officeMap.obstacles[i];
         this._fillRoundRectOnly(ctx, obs.x + 5, obs.y + 5, obs.width, obs.height, 6);
+      }
+
+      if (combat) {
+        // 테스트 타겟 바닥 그림자
+        for (let i = 0; i < combat.targets.length; i++) {
+          const target = combat.targets[i];
+          if (!target.alive) continue;
+          ctx.beginPath();
+          ctx.ellipse(target.position.x, target.position.y + 3, 18, 10, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // 투사체 바닥 그림자
+        for (let i = 0; i < combat.projectiles.length; i++) {
+          const proj = combat.projectiles[i];
+          if (!proj.alive) continue;
+          ctx.beginPath();
+          ctx.ellipse(proj.x, proj.y + 2, 5, 3, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
 
       // 플레이어 발 그림자
@@ -629,9 +709,9 @@
     }
 
     /**
-     * 카툰 스타일 회사원 플레이어 렌더링 (단순 도형 조합)
+     * 카툰 스타일 회사원 플레이어 및 장착 무기 렌더링 (단순 도형 조합)
      */
-    _drawPlayer(ctx, player) {
+    _drawPlayer(ctx, player, weaponId = null) {
       const px = player.position.x;
       const py = player.position.y;
       const dirX = player.direction.x;
@@ -644,6 +724,11 @@
 
       ctx.save();
       ctx.translate(px, py);
+
+      // 위쪽을 조준할 때는 무기가 몸통 뒤쪽에 자연스럽게 위치하도록 먼저 렌더링
+      if (weaponId && facingBack) {
+        this._drawEquippedWeapon(ctx, player, weaponId, bounce);
+      }
 
       // 1. 다리 / 구두 (검은 정장 바지 & 구두 도형)
       this._fillStrokeRoundRect(ctx, -9, -9 + stride * 0.5, 7, 10, 3, '#1e2436', OUTLINE_COLOR, 2.2);
@@ -754,6 +839,291 @@
       ctx.beginPath();
       ctx.moveTo(0, headY - headRadius);
       ctx.quadraticCurveTo(4, headY - headRadius - 6, 8, headY - headRadius - 3);
+      ctx.stroke();
+
+      // 정면/측면 조준 시 무기를 몸통 앞쪽에 렌더링
+      if (weaponId && !facingBack) {
+        this._drawEquippedWeapon(ctx, player, weaponId, bounce);
+      }
+
+      ctx.restore();
+    }
+
+    /**
+     * 현재 장착 무기(대형 사무용 스테이플러 / 사무용 권총) 도형 렌더링
+     */
+    _drawEquippedWeapon(ctx, player, weaponId, bounce) {
+      const angle = player.direction.angle;
+      const anchorY = player.aimOffsetY - bounce;
+
+      ctx.save();
+      ctx.translate(0, anchorY);
+      ctx.rotate(angle);
+
+      // 좌측을 조준할 때 무기가 뒤집히지 않도록 상하 반전
+      if (Math.cos(angle) < 0) {
+        ctx.scale(1, -1);
+      }
+
+      if (weaponId === 'melee') {
+        // 대형 사무용 스테이플러 (붉은 상단 레버 + 금속 하단 받침대)
+        this._fillStrokeRoundRect(ctx, 10, 1, 16, 4.5, 1.5, '#64748b', OUTLINE_COLOR, 1.8);
+        this._fillStrokeRoundRect(ctx, 9, -5.5, 17, 6.5, 2, '#e11d48', OUTLINE_COLOR, 2);
+        ctx.fillStyle = '#cbd5e1';
+        ctx.fillRect(21, -1, 4, 2.5);
+      } else if (weaponId === 'ranged') {
+        // 사무용 권총 (권총 손잡이 + 메탈 슬라이드 총열)
+        this._fillStrokeRoundRect(ctx, 10, 0, 5.5, 7.5, 1.5, '#334155', OUTLINE_COLOR, 1.8);
+        this._fillStrokeRoundRect(ctx, 9, -5, 17, 6, 1.8, '#94a3b8', OUTLINE_COLOR, 2);
+        ctx.fillStyle = '#38bdf8';
+        ctx.fillRect(12, -3.2, 6, 2);
+      }
+
+      ctx.restore();
+    }
+
+    /**
+     * 임시 공격 테스트 타겟(훈련용 표적 더미) 렌더링
+     */
+    _drawTestTarget(ctx, target) {
+      const tx = target.position.x;
+      const ty = target.position.y;
+      const isFlashing = target.hitFlashTimer > 0;
+      const wobbleX =
+        target.shakeTimer > 0
+          ? Math.sin(target.shakeTimer * 55) * 3.5 * (target.lastHitDirX || 1)
+          : 0;
+
+      ctx.save();
+      ctx.translate(tx + wobbleX, ty);
+
+      // 1. 철제 받침대 베이스 (바닥 접지면)
+      this._fillStrokeRoundRect(ctx, -15, -6, 30, 10, 4, '#334155', OUTLINE_COLOR, 2.2);
+      this._fillStrokeRect(ctx, -4, -18, 8, 13, '#475569', OUTLINE_COLOR, 2);
+
+      // 2. 더미 몸통 (피격 시 흰색/밝은 붉은색 플래시)
+      const bodyFill = isFlashing ? '#ffffff' : '#6d597a';
+      this._fillStrokeRoundRect(ctx, -15, -44, 30, 29, 8, bodyFill, OUTLINE_COLOR, 2.5);
+
+      // 3. 과녁(Bullseye) 마크
+      const bullY = -29;
+      ctx.fillStyle = isFlashing ? '#fca5a5' : '#f8fafc';
+      ctx.strokeStyle = OUTLINE_COLOR;
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.arc(0, bullY, 9.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath();
+      ctx.arc(0, bullY, 5.8, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#f8fafc';
+      ctx.beginPath();
+      ctx.arc(0, bullY, 2.4, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 4. 더미 헤드 및 포스트잇 장식
+      this._fillStrokeRoundRect(ctx, -10, -59, 20, 16, 6, isFlashing ? '#ffffff' : '#8d779c', OUTLINE_COLOR, 2.4);
+      this._fillStrokeRect(ctx, -4, -55, 9, 8, '#fef08a', OUTLINE_COLOR, 1.4);
+
+      // 5. 타겟 상단 체력 바 표시
+      const barW = 38;
+      const barH = 6;
+      const barX = -barW * 0.5;
+      const barY = -71;
+      const hpRatio = Math.max(0, Math.min(1, target.hp / target.maxHp));
+
+      this._fillStrokeRoundRect(ctx, barX, barY, barW, barH, 3, '#0f172a', OUTLINE_COLOR, 1.6);
+      if (hpRatio > 0) {
+        ctx.fillStyle = hpRatio > 0.4 ? '#fb7185' : '#f43f5e';
+        ctx.fillRect(barX + 1.5, barY + 1.5, (barW - 3) * hpRatio, barH - 3);
+      }
+
+      ctx.font = 'bold 10px "Malgun Gothic", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#e2e8f0';
+      ctx.strokeStyle = OUTLINE_COLOR;
+      ctx.lineWidth = 2.5;
+      const hpLabel = `${target.hp}`;
+      ctx.strokeText(hpLabel, 0, barY - 3);
+      ctx.fillText(hpLabel, 0, barY - 3);
+
+      ctx.restore();
+    }
+
+    /**
+     * 원거리 무기 투사체 렌더링 (상체 높이로 비행)
+     */
+    _drawProjectile(ctx, proj) {
+      const visualY = proj.y - 18;
+      const prevVisualY = proj.prevY - 18;
+
+      ctx.save();
+
+      // 짧은 잔상 궤적
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.55)';
+      ctx.lineWidth = 4;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(proj.prevX - Math.cos(proj.angle) * 8, prevVisualY - Math.sin(proj.angle) * 8);
+      ctx.lineTo(proj.x, visualY);
+      ctx.stroke();
+
+      // 탄환 본체
+      ctx.translate(proj.x, visualY);
+      ctx.rotate(proj.angle);
+      this._fillStrokeRoundRect(ctx, -6, -3.5, 12, 7, 3.5, '#fde047', OUTLINE_COLOR, 2);
+
+      ctx.restore();
+    }
+
+    /**
+     * 근접 공격의 바닥 판정 영역(55px, 100도 부채꼴) 표시
+     */
+    _drawMeleeGroundSector(ctx, combat) {
+      for (let i = 0; i < combat.meleeSwings.length; i++) {
+        const swing = combat.meleeSwings[i];
+        const progress = Math.min(1, swing.elapsed / swing.visualDuration);
+        const alpha = (1 - progress) * 0.24;
+        const startAngle = swing.angle - swing.arcRad * 0.5;
+        const endAngle = swing.angle + swing.arcRad * 0.5;
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(swing.x, swing.y);
+        ctx.arc(swing.x, swing.y, swing.range, startAngle, endAngle);
+        ctx.closePath();
+
+        ctx.fillStyle = `rgba(251, 191, 36, ${alpha.toFixed(3)})`;
+        ctx.fill();
+        ctx.strokeStyle = `rgba(251, 191, 36, ${(alpha * 1.6).toFixed(3)})`;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    /**
+     * 대형 사무용 스테이플러 부채꼴 휘두르기 시각 효과
+     */
+    _drawMeleeSlashArc(ctx, combat) {
+      for (let i = 0; i < combat.meleeSwings.length; i++) {
+        const swing = combat.meleeSwings[i];
+        const progress = Math.min(1, swing.elapsed / swing.visualDuration);
+        const fade = 1 - progress;
+        const halfArc = swing.arcRad * 0.5;
+        const startAngle = swing.angle - halfArc;
+        const endAngle = swing.angle + halfArc;
+        const originY = swing.y - 18;
+
+        ctx.save();
+        ctx.translate(swing.x, originY);
+
+        // 바깥 부채꼴 베기 궤적
+        ctx.beginPath();
+        ctx.arc(0, 0, swing.range, startAngle, endAngle);
+        ctx.arc(0, 0, swing.range * 0.58, endAngle, startAngle, true);
+        ctx.closePath();
+
+        ctx.fillStyle = `rgba(251, 191, 36, ${(fade * 0.48).toFixed(3)})`;
+        ctx.fill();
+
+        ctx.strokeStyle = `rgba(254, 243, 199, ${(fade * 0.92).toFixed(3)})`;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(0, 0, swing.range - 1, startAngle, endAngle);
+        ctx.stroke();
+
+        // 진행 중인 스테이플러 잔상 위치
+        const sweepAngle = startAngle + swing.arcRad * Math.min(1, progress * 1.35);
+        const tipX = Math.cos(sweepAngle) * (swing.range - 6);
+        const tipY = Math.sin(sweepAngle) * (swing.range - 6);
+        ctx.fillStyle = `rgba(244, 63, 94, ${(fade * 0.95).toFixed(3)})`;
+        ctx.beginPath();
+        ctx.arc(tipX, tipY, 4.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+      }
+    }
+
+    /**
+     * 타겟 피격 및 벽 충돌 스파크 이펙트
+     */
+    _drawImpactEffects(ctx, combat) {
+      for (let i = 0; i < combat.impactEffects.length; i++) {
+        const fx = combat.impactEffects[i];
+        const t = Math.min(1, fx.elapsed / fx.duration);
+        const radius = 4 + (fx.maxRadius - 4) * t;
+        const alpha = 1 - t;
+
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.strokeStyle = fx.color;
+        ctx.lineWidth = 2.8 * (1 - t * 0.5);
+        ctx.beginPath();
+        ctx.arc(fx.x, fx.y, radius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    /**
+     * 피해량(-25, -15 등) 플로팅 텍스트 표시
+     */
+    _drawDamagePopups(ctx, combat) {
+      ctx.save();
+      ctx.font = '800 15px "Malgun Gothic", sans-serif';
+      ctx.textAlign = 'center';
+
+      for (let i = 0; i < combat.damagePopups.length; i++) {
+        const popup = combat.damagePopups[i];
+        const t = Math.min(1, popup.elapsed / popup.duration);
+        const alpha = t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3;
+
+        ctx.globalAlpha = Math.max(0, alpha);
+        ctx.strokeStyle = OUTLINE_COLOR;
+        ctx.lineWidth = 3.5;
+        ctx.strokeText(popup.text, popup.x, popup.y);
+
+        ctx.fillStyle = popup.color;
+        ctx.fillText(popup.text, popup.x, popup.y);
+      }
+
+      ctx.restore();
+    }
+
+    /**
+     * 마우스 조준 위치 크로스헤어 렌더링
+     */
+    _drawAimCrosshair(ctx, aimWorld, weaponId) {
+      const { x, y } = aimWorld;
+      const color = weaponId === 'ranged' ? '#38bdf8' : '#fbbf24';
+
+      ctx.save();
+      ctx.translate(x, y);
+
+      ctx.strokeStyle = OUTLINE_COLOR;
+      ctx.lineWidth = 3.6;
+      ctx.beginPath();
+      ctx.arc(0, 0, 8, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.arc(0, 0, 8, 0, Math.PI * 2);
+      ctx.moveTo(-12, 0);
+      ctx.lineTo(-5, 0);
+      ctx.moveTo(5, 0);
+      ctx.lineTo(12, 0);
+      ctx.moveTo(0, -12);
+      ctx.lineTo(0, -5);
+      ctx.moveTo(0, 5);
+      ctx.lineTo(0, 12);
       ctx.stroke();
 
       ctx.restore();

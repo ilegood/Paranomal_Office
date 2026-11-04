@@ -26,8 +26,12 @@
       });
       this.input = new PO.InputManager(window);
       this.movement = new PO.MovementSystem();
+      this.combat = new PO.CombatSystem(PO.CombatSystem.createDefaultTargets());
       this.renderer = new PO.Renderer(this.canvas, this.stageElement, this.map);
       this.ui = new PO.UIManager();
+
+      // 마우스 월드 조준 좌표 (마우스 입력 전에는 null)
+      this.aimWorld = null;
 
       this.isRunning = false;
       this._lastTimestamp = 0;
@@ -44,8 +48,8 @@
       this._lastTimestamp = performance.now();
 
       // 첫 프레임 즉시 동기화 및 렌더링
-      this.ui.update(this.player, this.input.getState());
-      this.renderer.render(this.map, this.player);
+      this.ui.update(this.player, this.input.getState(), this.combat.getUIState());
+      this.renderer.render(this.map, this.player, this.combat, this.aimWorld);
 
       this._rafId = requestAnimationFrame(this._boundTick);
     }
@@ -74,14 +78,56 @@
       this._rafId = requestAnimationFrame(this._boundTick);
     }
 
+    /**
+     * 마우스 커서의 화면 좌표를 월드 좌표로 변환하여 플레이어 조준 방향 갱신
+     */
+    _updateAimFromMouse() {
+      if (!this.input.mouse.hasPosition) {
+        return;
+      }
+
+      if (this.input.consumeMouseDirty() || this.aimWorld === null) {
+        const rawWorld = this.renderer.screenToWorld(
+          this.input.mouse.clientX,
+          this.input.mouse.clientY
+        );
+        this.aimWorld = {
+          x: Math.max(0, Math.min(this.map.width, rawWorld.x)),
+          y: Math.max(0, Math.min(this.map.height, rawWorld.y))
+        };
+      }
+
+      const aimOrigin = this.player.getAimOrigin();
+      this.player.setDirection(this.aimWorld.x - aimOrigin.x, this.aimWorld.y - aimOrigin.y);
+    }
+
     update(dt) {
+      // 1. 무기 전환 입력 처리 (1: 근접 스테이플러, 2: 원거리 권총)
+      const requestedSlot = this.input.consumeWeaponSwitch();
+      if (requestedSlot !== null) {
+        this.combat.switchWeapon(requestedSlot);
+      }
+
+      // 2. WASD 플레이어 이동 및 벽/장애물/타겟 충돌 처리
       const moveVector = this.input.getMoveVector();
-      this.movement.update(this.player, moveVector, this.map, dt);
-      this.ui.update(this.player, this.input.getState());
+      this.movement.update(this.player, moveVector, this.map, dt, {
+        updateDirection: !this.input.mouse.hasPosition,
+        circleBlockers: this.combat.targets
+      });
+
+      // 3. 마우스 커서 방향 조준 갱신 (이동 후 플레이어 최신 좌표 기준으로 조준각 계산)
+      this._updateAimFromMouse();
+
+      // 4. 공격 판정, 투사체 이동/벽 충돌, 쿨다운, 타겟 피격 업데이트
+      const shouldAttack = this.input.consumeAttackInput();
+      this.combat.update(dt, this.player, this.map, shouldAttack);
+
+      // 5. UI 동기화
+      this.ui.update(this.player, this.input.getState(), this.combat.getUIState());
     }
 
     render() {
-      this.renderer.render(this.map, this.player);
+      this.renderer.render(this.map, this.player, this.combat, this.aimWorld);
     }
   }
 
@@ -100,4 +146,3 @@
     bootstrap();
   }
 })(window);
-

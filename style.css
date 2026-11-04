@@ -26,6 +26,10 @@ body {
   padding: 8px;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 #game-stage {
   position: relative;
   border: 3px solid #1e253b;
@@ -33,6 +37,7 @@ body {
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.75);
   overflow: hidden;
   background-color: #121624;
+  cursor: crosshair;
 }
 
 #game-canvas {
@@ -62,7 +67,8 @@ body {
 .hud-bottom {
   display: flex;
   align-items: flex-end;
-  justify-content: flex-start;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .hud-card {
@@ -218,12 +224,147 @@ body {
   transform: translateY(1px);
 }
 
+.controls-text-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .controls-label {
-  font-size: clamp(11.5px, 0.95vw, 13px);
+  font-size: clamp(11px, 0.92vw, 12.5px);
   color: #dbe4f5;
 }
 
-.controls-label strong {
+.controls-sublabel {
+  font-size: clamp(10.5px, 0.85vw, 11.5px);
+  color: #9fb0d1;
+}
+
+.controls-label strong,
+.controls-sublabel strong {
   color: #fbbf24;
   font-weight: 800;
+}
+
+/* 장착 무기 및 공격 상태 패널 */
+.weapon-panel {
+  padding: 9px 14px;
+  min-width: clamp(210px, 21vw, 255px);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.weapon-slot-tabs {
+  display: flex;
+  gap: 6px;
+}
+
+.slot-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #8b9bb8;
+  background: rgba(15, 19, 32, 0.75);
+  border: 1.5px solid #2b3553;
+}
+
+.slot-tab kbd {
+  font-family: inherit;
+  font-weight: 800;
+  color: #cbd5e1;
+}
+
+.slot-tab.is-active {
+  color: #111522;
+  background: #fbbf24;
+  border-color: #d97706;
+}
+
+.slot-tab.is-active kbd {
+  color: #111522;
+}
+
+.weapon-info-main {
+  padding-bottom: 5px;
+  border-bottom: 1.5px solid rgba(92, 110, 158, 0.28);
+}
+
+.weapon-name {
+  font-size: clamp(13px, 1.15vw, 15.5px);
+  font-weight: 800;
+  color: #f8fafc;
+}
+
+.weapon-mode {
+  font-size: clamp(10.5px, 0.88vw, 12px);
+  font-weight: 600;
+  color: #93c5fd;
+  margin-top: 1px;
+}
+
+.weapon-stat-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: clamp(11px, 0.9vw, 12.5px);
+  font-weight: 700;
+}
+
+.weapon-stat-label {
+  color: #cbd5e1;
+}
+
+.weapon-ammo-value {
+  color: #38bdf8;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+}
+
+.weapon-ammo-value.is-empty {
+  color: #f87171;
+}
+
+.weapon-cooldown-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.weapon-cooldown-text {
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(10.5px, 0.88vw, 12px);
+  color: #fbbf24;
+}
+
+.weapon-cooldown-text.is-ready {
+  color: #4ade80;
+}
+
+.weapon-cooldown-text.is-empty {
+  color: #f87171;
+}
+
+.cooldown-bar-track {
+  width: 100%;
+  height: 8px;
+  background: #0d101b;
+  border: 1.5px solid #090b12;
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.cooldown-bar-fill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, #f59e0b 0%, #fbbf24 100%);
+  border-radius: 3px;
+}
+
+.cooldown-bar-fill.is-ready {
+  background: linear-gradient(90deg, #22c55e 0%, #4ade80 100%);
 }

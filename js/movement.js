@@ -13,12 +13,15 @@
      * @param {{x: number, y: number}} inputVector
      * @param {PO.OfficeMap} officeMap
      * @param {number} dt 경과 시간(초)
+     * @param {{updateDirection?: boolean, circleBlockers?: Array}} [options]
      */
-    update(player, inputVector, officeMap, dt) {
+    update(player, inputVector, officeMap, dt, options = {}) {
       if (dt <= 0) {
         return;
       }
 
+      const updateDirection = options.updateDirection !== false;
+      const circleBlockers = options.circleBlockers || [];
       const rawLen = Math.hypot(inputVector.x, inputVector.y);
 
       if (rawLen > 1e-6) {
@@ -30,8 +33,10 @@
         player.velocity.y = dirY * player.speed;
         player.isMoving = true;
 
-        // 이동 중 캐릭터 방향 갱신
-        player.setDirection(dirX, dirY);
+        // 마우스 조준 전 초기 상태에서는 이동 방향으로 캐릭터 방향 갱신
+        if (updateDirection) {
+          player.setDirection(dirX, dirY);
+        }
         player.walkPhase += dt * 11.5;
       } else {
         // 키를 놓으면 즉시 정지
@@ -52,11 +57,26 @@
       const bounds = officeMap.getPlayableBounds(radius);
       const obstacles = officeMap.getSolidObstacles();
 
-      // 다중 패스 원형(발)-사각형(장애물 바닥) 충돌 해결 및 맵 경계 클램핑
+      // 다중 패스 원형(발)-사각형(장애물 바닥) 및 원형(타겟) 충돌 해결, 맵 경계 클램핑
       // 벽이나 책상 모서리에 비스듬히 부딪혀도 자연스럽게 미끄러지며 절대 관통하지 않음
       for (let iter = 0; iter < 3; iter++) {
         nextX = this._clamp(nextX, bounds.minX, bounds.maxX);
         nextY = this._clamp(nextY, bounds.minY, bounds.maxY);
+
+        for (let i = 0; i < circleBlockers.length; i++) {
+          const blocker = circleBlockers[i];
+          if (!blocker.alive) continue;
+          const resolvedCircle = this._resolveCircleCircle(
+            nextX,
+            nextY,
+            radius,
+            blocker.position.x,
+            blocker.position.y,
+            blocker.radius
+          );
+          nextX = resolvedCircle.x;
+          nextY = resolvedCircle.y;
+        }
 
         for (let i = 0; i < obstacles.length; i++) {
           const resolved = this._resolveCircleRect(nextX, nextY, radius, obstacles[i]);
@@ -68,6 +88,31 @@
       // 최종 경계 보정
       player.position.x = this._clamp(nextX, bounds.minX, bounds.maxX);
       player.position.y = this._clamp(nextY, bounds.minY, bounds.maxY);
+    }
+
+    /**
+     * 원과 원 간 최소 밀어내기 계산 (생존 중인 테스트 타겟 등)
+     */
+    _resolveCircleCircle(cx, cy, r1, bx, by, r2) {
+      const dx = cx - bx;
+      const dy = cy - by;
+      const minDist = r1 + r2;
+      const distSq = dx * dx + dy * dy;
+
+      if (distSq >= minDist * minDist) {
+        return { x: cx, y: cy };
+      }
+
+      if (distSq > 1e-8) {
+        const dist = Math.sqrt(distSq);
+        const overlap = minDist - dist;
+        return {
+          x: cx + (dx / dist) * overlap,
+          y: cy + (dy / dist) * overlap
+        };
+      }
+
+      return { x: bx + minDist, y: cy };
     }
 
     /**
