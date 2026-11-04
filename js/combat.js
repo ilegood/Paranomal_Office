@@ -123,8 +123,11 @@
 
       this.currentSlot = 1; // 기본 장착: 1번 근접 무기(대형 사무용 스테이플러)
 
-      // 활성 근접 공격 판정/이펙트 목록
+      // 활성 근접 공격 판정 목록 (피격 판정 전용, 시각 효과와 분리)
       this.meleeSwings = [];
+
+      // 활성 근접 휘두르기 시각 이펙트 목록 (렌더링 전용, 판정 로직과 분리)
+      this.meleeEffects = [];
 
       // 활성 원거리 투사체 목록
       this.projectiles = [];
@@ -211,6 +214,8 @@
       weaponState.cooldownRemaining = cfg.cooldown;
 
       const arcRad = (cfg.arcDegrees * Math.PI) / 180;
+
+      // 1. 공격 판정 객체 생성 (데미지, 범위, 각도, 판정 유지 시간만 관리)
       const swing = {
         x: player.position.x,
         y: player.position.y,
@@ -220,15 +225,30 @@
         damage: cfg.damage,
         elapsed: 0,
         activeDuration: cfg.activeDuration,
-        visualDuration: cfg.visualDuration,
         isHitboxActive: true,
         hitTargetIds: new Set()
       };
 
       this.meleeSwings.push(swing);
 
+      // 2. 단일 부채꼴 휘두르기 시각 이펙트 1개 생성 (공격 판정과 독립)
+      this._spawnMeleeSwingEffect(player, cfg, arcRad);
+
       // 생성 직후 첫 프레임 즉시 판정 수행
       this._checkMeleeSwingHits(swing);
+    }
+
+    _spawnMeleeSwingEffect(player, cfg, arcRad) {
+      this.meleeEffects.push({
+        x: player.position.x,
+        y: player.position.y,
+        aimOffsetY: player.aimOffsetY ?? -18,
+        angle: player.direction.angle,
+        arcRad,
+        maxRadius: cfg.range,
+        elapsed: 0,
+        duration: cfg.visualDuration
+      });
     }
 
     _performRangedAttack(player, weaponState, officeMap) {
@@ -299,21 +319,19 @@
         this.tryAttack(player, officeMap);
       }
 
-      // 3. 활성 근접 공격 판정 및 시각 이펙트 갱신
+      // 3. 활성 근접 공격 판정 갱신 (판정 유지 시간 동안만 활성 후 제거)
       for (let i = this.meleeSwings.length - 1; i >= 0; i--) {
         const swing = this.meleeSwings[i];
         swing.elapsed += dt;
 
-        // 근접 휘두르기는 플레이어 위치를 따라가며 활성 시간 동안만 판정 유지
+        // 근접 판정은 플레이어 위치를 따라가며 활성 시간 동안만 판정 유지
         swing.x = player.position.x;
         swing.y = player.position.y;
         swing.isHitboxActive = swing.elapsed <= swing.activeDuration;
 
         if (swing.isHitboxActive) {
           this._checkMeleeSwingHits(swing);
-        }
-
-        if (swing.elapsed >= swing.visualDuration) {
+        } else {
           this.meleeSwings.splice(i, 1);
         }
       }
@@ -331,8 +349,8 @@
         target.update(dt);
       }
 
-      // 6. 피격 데미지 팝업 및 이펙트 갱신
-      this._updateEffects(dt);
+      // 6. 근접 휘두르기 시각 이펙트, 피격 데미지 팝업 및 충돌 스파크 갱신
+      this._updateEffects(dt, player);
     }
 
     /**
@@ -490,7 +508,19 @@
       });
     }
 
-    _updateEffects(dt) {
+    _updateEffects(dt, player) {
+      for (let i = this.meleeEffects.length - 1; i >= 0; i--) {
+        const fx = this.meleeEffects[i];
+        fx.elapsed += dt;
+        if (player) {
+          fx.x = player.position.x;
+          fx.y = player.position.y;
+        }
+        if (fx.elapsed >= fx.duration) {
+          this.meleeEffects.splice(i, 1);
+        }
+      }
+
       for (let i = this.damagePopups.length - 1; i >= 0; i--) {
         const popup = this.damagePopups[i];
         popup.elapsed += dt;

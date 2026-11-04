@@ -80,14 +80,11 @@
       // 2. 북쪽(뒷면) 벽면 및 좌/우 외벽
       this._drawBackAndSideWalls(ctx, officeMap);
 
-      // 3. 임시 무적 테스트 위험 구역, 바닥 그림자, 근접 범위 및 조준 방향 표시
+      // 3. 임시 무적 테스트 위험 구역, 바닥 그림자 및 조준 방향 표시
       if (testHazard) {
         testHazard.renderFloor(ctx);
       }
       this._drawShadows(ctx, officeMap, player, combat);
-      if (combat) {
-        this._drawMeleeGroundSector(ctx, combat);
-      }
       this._drawPlayerDirectionIndicator(ctx, player);
 
       // 4. 쿼터뷰 Y-정렬 렌더링 (발/바닥 Y좌표 기준으로 앞뒤 원근 순서 결정)
@@ -139,11 +136,16 @@
       }
 
       const equippedWeaponId = combat ? combat.getCurrentWeaponState().config.id : null;
+      const activeMeleeEffect =
+        combat && combat.meleeEffects && combat.meleeEffects.length > 0
+          ? combat.meleeEffects[combat.meleeEffects.length - 1]
+          : null;
       renderQueue.push({
         kind: 'player',
         sortY: player.getSortY(),
         data: player,
-        weaponId: equippedWeaponId
+        weaponId: equippedWeaponId,
+        activeMeleeEffect
       });
 
       renderQueue.sort((a, b) => a.sortY - b.sortY);
@@ -164,7 +166,7 @@
             this._drawProjectile(ctx, item.data);
             break;
           case 'player':
-            this._drawPlayer(ctx, item.data, item.weaponId);
+            this._drawPlayer(ctx, item.data, item.weaponId, item.activeMeleeEffect);
             break;
           default:
             break;
@@ -761,7 +763,7 @@
      * 카툰 스타일 회사원 플레이어 및 장착 무기 렌더링 (단순 도형 조합)
      * 대시 중 속도선 효과 및 무적 시간 동안 투명도·색상 변경 표현 포함
      */
-    _drawPlayer(ctx, player, weaponId = null) {
+    _drawPlayer(ctx, player, weaponId = null, activeMeleeEffect = null) {
       const px = player.position.x;
       const py = player.position.y;
       const dirX = player.direction.x;
@@ -821,7 +823,7 @@
 
       // 위쪽을 조준할 때는 무기가 몸통 뒤쪽에 자연스럽게 위치하도록 먼저 렌더링
       if (weaponId && facingBack) {
-        this._drawEquippedWeapon(ctx, player, weaponId, bounce);
+        this._drawEquippedWeapon(ctx, player, weaponId, bounce, activeMeleeEffect);
       }
 
       // 1. 다리 / 구두 (검은 정장 바지 & 구두 도형)
@@ -937,7 +939,7 @@
 
       // 정면/측면 조준 시 무기를 몸통 앞쪽에 렌더링
       if (weaponId && !facingBack) {
-        this._drawEquippedWeapon(ctx, player, weaponId, bounce);
+        this._drawEquippedWeapon(ctx, player, weaponId, bounce, activeMeleeEffect);
       }
 
       ctx.restore();
@@ -946,16 +948,21 @@
     /**
      * 현재 장착 무기(대형 사무용 스테이플러 / 사무용 권총) 도형 렌더링
      */
-    _drawEquippedWeapon(ctx, player, weaponId, bounce) {
-      const angle = player.direction.angle;
+    _drawEquippedWeapon(ctx, player, weaponId, bounce, activeMeleeEffect = null) {
+      const aimAngle = player.direction.angle;
+      const meleePose =
+        weaponId === 'melee' && activeMeleeEffect
+          ? this._computeMeleeSwingPose(activeMeleeEffect)
+          : null;
+      const weaponAngle = meleePose ? meleePose.headAngle : aimAngle;
       const anchorY = player.aimOffsetY - bounce;
 
       ctx.save();
       ctx.translate(0, anchorY);
-      ctx.rotate(angle);
+      ctx.rotate(weaponAngle);
 
-      // 좌측을 조준할 때 무기가 뒤집히지 않도록 상하 반전
-      if (Math.cos(angle) < 0) {
+      // 좌측을 조준할 때 무기가 뒤집히지 않도록 기준 조준각 기준으로 상하 반전
+      if (Math.cos(aimAngle) < 0) {
         ctx.scale(1, -1);
       }
 
@@ -1075,70 +1082,139 @@
     }
 
     /**
-     * 근접 공격의 바닥 판정 영역(55px, 100도 부채꼴) 표시
+     * 근접 휘두르기 이펙트의 시간 진행률(0~1)에 따른 회전 각도, 반경 크기, 투명도 계산
+     * - 초반: 작고 반투명하게 시작
+     * - 중반: 공격 방향으로 빠르게 휘둘러지며 크게 펼쳐짐
+     * - 후반: 반경이 줄어들고 투명도가 빠르게 감소하며 자연스럽게 소멸
      */
-    _drawMeleeGroundSector(ctx, combat) {
-      for (let i = 0; i < combat.meleeSwings.length; i++) {
-        const swing = combat.meleeSwings[i];
-        const progress = Math.min(1, swing.elapsed / swing.visualDuration);
-        const alpha = (1 - progress) * 0.24;
-        const startAngle = swing.angle - swing.arcRad * 0.5;
-        const endAngle = swing.angle + swing.arcRad * 0.5;
+    _computeMeleeSwingPose(fx) {
+      const t = Math.max(0, Math.min(1, fx.elapsed / fx.duration));
+      const sweepDir = Math.cos(fx.angle) < 0 ? -1 : 1;
+      const totalSweep = fx.arcRad * 1.12;
+      const startBase = fx.angle - sweepDir * (totalSweep * 0.5);
 
-        ctx.save();
-        ctx.beginPath();
-        ctx.moveTo(swing.x, swing.y);
-        ctx.arc(swing.x, swing.y, swing.range, startAngle, endAngle);
-        ctx.closePath();
+      // 선두 각도는 초반~중반에 빠르게 회전하고, 후미 각도는 중후반에 빠르게 따라붙음
+      const headProgress = Math.min(1, t / 0.68);
+      const headNorm = 0.16 + 0.84 * (1 - Math.pow(1 - headProgress, 2.5));
+      const tailNorm = 0.86 * Math.pow(t, 2.0);
 
-        ctx.fillStyle = `rgba(251, 191, 36, ${alpha.toFixed(3)})`;
-        ctx.fill();
-        ctx.strokeStyle = `rgba(251, 191, 36, ${(alpha * 1.6).toFixed(3)})`;
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-        ctx.restore();
+      const tailAngle = startBase + sweepDir * totalSweep * tailNorm;
+      const headAngle = startBase + sweepDir * totalSweep * headNorm;
+
+      // 반경 크기 변화: 초반 작게 시작(0.42x) -> 중반 크게 확장(1.04x) -> 후반 축소(0.72x)
+      let radiusScale;
+      if (t < 0.38) {
+        const u = t / 0.38;
+        radiusScale = 0.42 + 0.62 * (1 - Math.pow(1 - u, 1.85));
+      } else if (t <= 0.56) {
+        const m = (t - 0.38) / 0.18;
+        radiusScale = 1.04 - 0.04 * m;
+      } else {
+        const v = (t - 0.56) / 0.44;
+        radiusScale = 1.0 - 0.28 * Math.pow(v, 1.3);
       }
+
+      // 투명도 변화: 초반 반투명 시작 -> 중반 선명 -> 후반 빠르게 감쇠하여 소멸
+      let alpha;
+      if (t < 0.26) {
+        const u = t / 0.26;
+        alpha = 0.18 + 0.76 * (u * (2 - u));
+      } else if (t <= 0.52) {
+        const m = (t - 0.26) / 0.26;
+        alpha = 0.94 - 0.06 * m;
+      } else {
+        const w = (t - 0.52) / 0.48;
+        alpha = 0.88 * Math.pow(1 - w, 2.4);
+      }
+
+      return {
+        t,
+        sweepDir,
+        tailAngle,
+        headAngle,
+        outerRadius: fx.maxRadius * radiusScale,
+        alpha
+      };
     }
 
     /**
-     * 대형 사무용 스테이플러 부채꼴 휘두르기 시각 효과
+     * 선두(휘두르는 방향)는 두껍고 후미 끝단으로 갈수록 매끄럽게 좁아지는 카툰풍 단일 부채꼴 경로 생성
+     */
+    _traceTaperedFanPath(ctx, tailAngle, headAngle, sweepDir, outerR, innerHeadRatio = 0.16) {
+      const anticlockwise = sweepDir < 0;
+      const innerHeadR = outerR * innerHeadRatio;
+
+      ctx.beginPath();
+      ctx.arc(0, 0, outerR, tailAngle, headAngle, anticlockwise);
+      ctx.lineTo(Math.cos(headAngle) * innerHeadR, Math.sin(headAngle) * innerHeadR);
+
+      const segments = 10;
+      for (let s = 1; s <= segments; s++) {
+        const u = s / segments;
+        const ang = headAngle + (tailAngle - headAngle) * u;
+        const r = innerHeadR + (outerR - innerHeadR) * Math.pow(u, 1.7);
+        ctx.lineTo(Math.cos(ang) * r, Math.sin(ang) * r);
+      }
+
+      ctx.closePath();
+    }
+
+    /**
+     * 대형 사무용 스테이플러 단일 부채꼴 휘두르기 시각 효과 (공격 판정과 분리된 meleeEffects 렌더링)
      */
     _drawMeleeSlashArc(ctx, combat) {
-      for (let i = 0; i < combat.meleeSwings.length; i++) {
-        const swing = combat.meleeSwings[i];
-        const progress = Math.min(1, swing.elapsed / swing.visualDuration);
-        const fade = 1 - progress;
-        const halfArc = swing.arcRad * 0.5;
-        const startAngle = swing.angle - halfArc;
-        const endAngle = swing.angle + halfArc;
-        const originY = swing.y - 18;
+      if (!combat.meleeEffects || combat.meleeEffects.length === 0) {
+        return;
+      }
+
+      for (let i = 0; i < combat.meleeEffects.length; i++) {
+        const fx = combat.meleeEffects[i];
+        const pose = this._computeMeleeSwingPose(fx);
+        if (pose.alpha <= 0.005 || pose.outerRadius <= 2) {
+          continue;
+        }
+
+        const originY = fx.y + (fx.aimOffsetY ?? -18);
+        const { sweepDir, tailAngle, headAngle, outerRadius, alpha } = pose;
+        const anticlockwise = sweepDir < 0;
 
         ctx.save();
-        ctx.translate(swing.x, originY);
+        ctx.translate(fx.x, originY);
 
-        // 바깥 부채꼴 베기 궤적
-        ctx.beginPath();
-        ctx.arc(0, 0, swing.range, startAngle, endAngle);
-        ctx.arc(0, 0, swing.range * 0.58, endAngle, startAngle, true);
-        ctx.closePath();
+        // 단일 황금색/노란색 카툰 부채꼴 본체 (후미는 옅은 잔상처럼 투명하고 선두로 갈수록 선명한 황금빛)
+        this._traceTaperedFanPath(ctx, tailAngle, headAngle, sweepDir, outerRadius, 0.16);
+        const gradR = outerRadius * 0.72;
+        const tailX = Math.cos(tailAngle) * gradR;
+        const tailY = Math.sin(tailAngle) * gradR;
+        const headX = Math.cos(headAngle) * gradR;
+        const headY = Math.sin(headAngle) * gradR;
 
-        ctx.fillStyle = `rgba(251, 191, 36, ${(fade * 0.48).toFixed(3)})`;
+        const grad = ctx.createLinearGradient(tailX, tailY, headX, headY);
+        grad.addColorStop(0, `rgba(245, 158, 11, ${(alpha * 0.14).toFixed(3)})`);
+        grad.addColorStop(0.52, `rgba(251, 191, 36, ${(alpha * 0.68).toFixed(3)})`);
+        grad.addColorStop(1, `rgba(253, 224, 71, ${(alpha * 0.94).toFixed(3)})`);
+        ctx.fillStyle = grad;
         ctx.fill();
 
-        ctx.strokeStyle = `rgba(254, 243, 199, ${(fade * 0.92).toFixed(3)})`;
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.arc(0, 0, swing.range - 1, startAngle, endAngle);
+        // 카툰풍 윤곽을 살리는 부드러운 황금빛 테두리
+        ctx.strokeStyle = `rgba(217, 119, 6, ${(alpha * 0.52).toFixed(3)})`;
+        ctx.lineWidth = 1.5;
+        ctx.lineJoin = 'round';
         ctx.stroke();
 
-        // 진행 중인 스테이플러 잔상 위치
-        const sweepAngle = startAngle + swing.arcRad * Math.min(1, progress * 1.35);
-        const tipX = Math.cos(sweepAngle) * (swing.range - 6);
-        const tipY = Math.sin(sweepAngle) * (swing.range - 6);
-        ctx.fillStyle = `rgba(244, 63, 94, ${(fade * 0.95).toFixed(3)})`;
+        // 바깥 칼날 원호 및 선두 타격선 밝은 노란색 하이라이트
+        const innerHeadR = outerRadius * 0.18;
+        const edgeGrad = ctx.createLinearGradient(tailX, tailY, headX, headY);
+        edgeGrad.addColorStop(0, `rgba(254, 240, 138, ${(alpha * 0.18).toFixed(3)})`);
+        edgeGrad.addColorStop(0.45, `rgba(254, 240, 138, ${(alpha * 0.78).toFixed(3)})`);
+        edgeGrad.addColorStop(1, `rgba(254, 249, 195, ${(alpha * 0.98).toFixed(3)})`);
+        ctx.strokeStyle = edgeGrad;
+        ctx.lineWidth = 2.8;
+        ctx.lineCap = 'round';
         ctx.beginPath();
-        ctx.arc(tipX, tipY, 4.5, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.arc(0, 0, Math.max(1, outerRadius - 1.4), tailAngle, headAngle, anticlockwise);
+        ctx.lineTo(Math.cos(headAngle) * innerHeadR, Math.sin(headAngle) * innerHeadR);
+        ctx.stroke();
 
         ctx.restore();
       }
