@@ -184,7 +184,8 @@
       const roomTypes = PO.ROOM_TYPES || {
         START: 'start',
         COMBAT: 'combat',
-        SUPPLY: 'supply'
+        SUPPLY: 'supply',
+        BOSS: 'boss'
       };
 
       const targetRoomCount = rng.int(cfg.minRooms, cfg.maxRooms);
@@ -302,6 +303,22 @@
         roomTypes
       );
 
+      // 10. Phase 10: 보스 방 중심에 보스 엔티티(야근 감독관) 스폰 좌표 설정
+      const bossRoom = normalized.rooms.find((r) => r.type === roomTypes.BOSS);
+      const bossSpawn = bossRoom
+        ? {
+            id: 'boss-overtime-director',
+            roomId: bossRoom.id,
+            name: '야근 감독관',
+            x: Math.round(bossRoom.x + bossRoom.width * 0.5),
+            y: Math.round(bossRoom.y + bossRoom.height * 0.5),
+            maxHp: 500,
+            hp: 500,
+            speed: 120,
+            colliderRadius: 30
+          }
+        : null;
+
       return {
         seed: displaySeed,
         isRandomGenerated: true,
@@ -318,6 +335,7 @@
         obstacles,
         playerSpawn,
         enemySpawns,
+        bossSpawn,
         itemSpawns,
         targetSpawns: [],
         testHazardSpawn: null
@@ -504,7 +522,7 @@
     }
 
     /**
-     * 시작 방(1개), 보급 방(1~2개), 전투 방(나머지) 역할 지정
+     * Phase 10: 시작 방(1개), 보스 방(1개), 보급 방(1~2개), 전투 방(나머지) 역할 지정
      */
     static _assignRoomRoles(rng, cells, graph, cfg, roomTypes) {
       const roles = new Map();
@@ -519,17 +537,36 @@
       roles.set(startKey, roomTypes.START);
 
       const otherCells = cells.filter((c) => c.key !== startKey);
+
+      // 1. 보스 방(1개): 시작 방에서 그래프 최단 거리(depth)가 가장 먼 후보 중 선택 (동률 시 리프 우선)
+      const bossCandidates = rng.shuffle(otherCells).sort((a, b) => {
+        const depthA = graph.depthMap.get(a.key) || 1;
+        const depthB = graph.depthMap.get(b.key) || 1;
+        if (depthB !== depthA) {
+          return depthB - depthA;
+        }
+        const degA = (graph.adj.get(a.key) || []).length;
+        const degB = (graph.adj.get(b.key) || []).length;
+        const leafBonusA = degA === 1 ? 1.5 : 0;
+        const leafBonusB = degB === 1 ? 1.5 : 0;
+        return (degA === 1 ? 2 : 0) - (degB === 1 ? 2 : 0);
+      });
+
+      const bossCell = bossCandidates[0];
+      roles.set(bossCell.key, roomTypes.BOSS);
+
+      // 2. 보급 방(1~2개): 보스 방을 제외한 방들 중 막다른 방 또는 거리가 있는 방 위주로 배정
+      const remainingCells = otherCells.filter((c) => c.key !== bossCell.key);
       const wantExtraSupply =
         cells.length >= cfg.extraSupplyRoomThreshold &&
         cfg.maxSupplyRooms >= 2 &&
         rng.chance(cfg.extraSupplyRoomChance);
       const targetSupplyCount = Math.min(
-        Math.max(1, otherCells.length - 2),
+        Math.max(1, remainingCells.length - 2),
         wantExtraSupply ? 2 : cfg.minSupplyRooms
       );
 
-      // 막다른 방(차수 1) 또는 시작 방에서 거리가 있는 방을 보급 방 후보로 우선 정렬하되 무작위성 가미
-      const scored = rng.shuffle(otherCells).sort((a, b) => {
+      const scored = rng.shuffle(remainingCells).sort((a, b) => {
         const degA = (graph.adj.get(a.key) || []).length;
         const degB = (graph.adj.get(b.key) || []).length;
         const leafBonusA = degA === 1 ? 1.5 : 0;
@@ -593,6 +630,12 @@
           maxW = Math.min(cfg.maxRoomWidth, 540);
           minH = cfg.minRoomHeight;
           maxH = Math.min(cfg.maxRoomHeight, 420);
+        } else if (type === roomTypes.BOSS) {
+          // 보스 방: 일반 전투 방보다 면적이 넓고 보스 행동 반경이 충분한 대형 방 (640~760 x 480~600)
+          minW = Math.max(cfg.minRoomWidth, 640);
+          maxW = Math.max(cfg.maxRoomWidth, 760);
+          minH = Math.max(cfg.minRoomHeight, 480);
+          maxH = Math.max(cfg.maxRoomHeight, 600);
         } else {
           minW = Math.max(cfg.minRoomWidth, 460);
           maxW = cfg.maxRoomWidth;
@@ -616,7 +659,12 @@
         let subtitle = '당직 대기실';
         let floorPalette = { primary: '#1e2639', secondary: '#1a2132' };
 
-        if (type === roomTypes.COMBAT) {
+        if (type === roomTypes.BOSS) {
+          id = 'room-boss';
+          name = '보스 방';
+          subtitle = '최종 승인실 (야근 감독관)';
+          floorPalette = { primary: '#281c2c', secondary: '#201524' };
+        } else if (type === roomTypes.COMBAT) {
           const idx = combatSeq++;
           id = `room-combat-${idx}`;
           name = `전투 방 ${idx}`;
@@ -950,6 +998,14 @@
       const cx = Math.round(room.x + room.width * 0.5);
       const cy = Math.round(room.y + room.height * 0.5);
 
+      if (room.type === roomTypes.BOSS) {
+        return [
+          { x: cx, y: cy, radius: 195, color: 'rgba(244, 63, 94, 0.12)' },
+          { x: room.x + 140, y: room.y + 105, radius: 145, color: 'rgba(168, 85, 247, 0.09)' },
+          { x: room.x + room.width - 140, y: room.y + room.height - 105, radius: 145, color: 'rgba(239, 68, 68, 0.08)' }
+        ];
+      }
+
       if (room.type === roomTypes.SUPPLY) {
         return [
           { x: cx, y: cy, radius: 155, color: 'rgba(74, 222, 128, 0.09)' },
@@ -983,6 +1039,9 @@
       const x = Math.round(room.x + (room.width - w) * 0.5);
       const y = Math.round(room.y + (room.height - h) * 0.5);
 
+      if (room.type === roomTypes.BOSS) {
+        return { roomId: room.id, x, y, width: w, height: h, color: '#2c182c', border: '#4f244e' };
+      }
       if (room.type === roomTypes.SUPPLY) {
         return { roomId: room.id, x, y, width: w, height: h, color: '#1b3137', border: '#2d5459' };
       }
@@ -995,9 +1054,14 @@
     /**
      * 방 내부 가구 장애물 배치
      * - 모든 문 개구부 앞 구역 및 문~방 중심 십자 통로를 금지 구역(forbiddenRects)으로 보호하여 길 막힘 원천 차단
+     * - 보스 방은 보스가 벽이나 장애물에 끼지 않도록 내부 장애물을 비워둔다.
      * - 시작 방은 플레이어 스폰 반경(playerSafeRadius) 내 장애물 배치 금지
      */
     static _placeRoomObstacles(rng, room, attachedDoors, startPlayerSpawn, cfg, roomTypes) {
+      if (room.type === roomTypes.BOSS) {
+        // 보스가 벽이나 장애물에 끼지 않도록 내부 장애물을 비워둠
+        return [];
+      }
       const forbiddenRects = [];
       const cx = room.x + room.width * 0.5;
       const cy = room.y + room.height * 0.5;
@@ -1425,7 +1489,13 @@
       const startRooms = rooms.filter((r) => r.type === 'start');
       const supplyRooms = rooms.filter((r) => r.type === 'supply');
       const combatRooms = rooms.filter((r) => r.type === 'combat');
-      if (startRooms.length !== 1 || supplyRooms.length < 1 || combatRooms.length < 1) {
+      const bossRooms = rooms.filter((r) => r.type === 'boss');
+      if (
+        startRooms.length !== 1 ||
+        supplyRooms.length < 1 ||
+        combatRooms.length < 1 ||
+        bossRooms.length !== 1
+      ) {
         return false;
       }
 
@@ -1529,6 +1599,14 @@
           const es = layout.enemySpawns[i];
           const er = tempMap.getRoomAt(es.x, es.y);
           if (!er || er.type === 'start' || hitsSolid(es.x, es.y, 19)) {
+            return false;
+          }
+        }
+
+        if (layout.bossSpawn) {
+          const bs = layout.bossSpawn;
+          const br = tempMap.getRoomAt(bs.x, bs.y);
+          if (!br || br.type !== 'boss' || hitsSolid(bs.x, bs.y, 30)) {
             return false;
           }
         }

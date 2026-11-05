@@ -169,9 +169,15 @@
         PO.EnemySystem.createDefaultEnemies(this.player.speed, this.map)
       );
 
-      // Phase 9: 전투 방 상태(Unvisited / Active / Cleared), 문 잠금 및 방별 적 수 추적 초기화
+      // Phase 10: 보스 방 보스 엔티티(야근 감독관) 초기화
+      this.boss =
+        PO.Boss && this.map.bossSpawn
+          ? new PO.Boss(this.map.bossSpawn)
+          : null;
+
+      // Phase 9 & 10: 전투 방/보스 방 상태(Unvisited / Active / Cleared), 문 잠금 및 방별 적 수 추적 초기화
       this.combatRooms = PO.CombatRoomSystem
-        ? new PO.CombatRoomSystem(this.map, this.enemies)
+        ? new PO.CombatRoomSystem(this.map, this.enemies, {}, this.boss)
         : null;
 
       this.combat = new PO.CombatSystem(PO.CombatSystem.createDefaultTargets(this.map));
@@ -263,7 +269,8 @@
         this.player.getDashUIState(),
         this.isGameOver,
         this.items ? this.items.getUIState(this.player, this.combat) : null,
-        this.combatRooms ? this.combatRooms.getUIState() : null
+        this.combatRooms ? this.combatRooms.getUIState() : null,
+        this.boss ? this.boss.getUIState() : null
       );
       this.render();
     }
@@ -288,7 +295,8 @@
         this.player.getDashUIState(),
         this.isGameOver,
         this.items ? this.items.getUIState(this.player, this.combat) : null,
-        this.combatRooms ? this.combatRooms.getUIState() : null
+        this.combatRooms ? this.combatRooms.getUIState() : null,
+        this.boss ? this.boss.getUIState() : null
       );
       this.render();
 
@@ -361,23 +369,27 @@
           this.movement.tryStartDash(this.player, moveVector);
         }
 
-        // 4. 대시 이동 / 일반 WASD 이동 및 벽·장애물·타겟·생존 적 충돌 처리
+        // 4. 대시 이동 / 일반 WASD 이동 및 벽·장애물·타겟·생존 적·보스 충돌 처리
         const circleBlockers = [
           ...this.combat.getAliveTargets(),
           ...this.enemies.getAliveEnemies()
         ];
+        if (this.boss && this.boss.alive && !this.boss.isDead()) {
+          circleBlockers.push(this.boss);
+        }
         this.movement.update(this.player, moveVector, this.map, dt, {
           updateDirection: !this.input.mouse.hasPosition,
           circleBlockers
         });
 
-        // 플레이어가 미방문 전투 방에 진입했다면 즉시 Active 전환 및 출입문 충돌체 잠금 적용
+        // 플레이어가 미방문 전투 방 또는 보스 방에 진입했다면 즉시 Active 전환 및 출입문 충돌체 잠금 적용
         if (this.combatRooms) {
           this.combatRooms.checkPlayerEntry(
             this.player,
             this.map,
             this.enemies,
-            this.isGameOver
+            this.isGameOver,
+            this.boss
           );
         }
 
@@ -404,14 +416,15 @@
         // 7. 이동 완료 후 플레이어 최신 좌표 기준으로 조준각 재보정
         this._updateAimFromMouse();
 
-        // 8. 플레이어 공격 판정, 투사체 이동/벽 충돌, 쿨다운, 타겟 및 생존 적 피격 업데이트
+        // 8. 플레이어 공격 판정, 투사체 이동/벽 충돌, 쿨다운, 타겟, 생존 적 및 보스 피격 업데이트
         const shouldAttack = this.input.consumeAttackInput();
         this.combat.update(
           dt,
           this.player,
           this.map,
           shouldAttack,
-          this.enemies.getAliveEnemies()
+          this.enemies.getAliveEnemies(),
+          this.boss
         );
       } else {
         // 사망(게임 오버) 상태에서는 이동·공격·대시·무기 전환·상호작용 입력을 모두 무시하고 잔여 이펙트만 정리
@@ -428,11 +441,12 @@
           this.player,
           this.map,
           false,
-          this.enemies.getAliveEnemies()
+          this.enemies.getAliveEnemies(),
+          this.boss
         );
       }
 
-      // 9. 적 AI 상태 전이(Idle/Patrol/Chase/Attack/Dead), 근접 공격 및 플레이어 피해 처리
+      // 9. 일반 적 AI 상태 전이(Idle/Patrol/Chase/Attack/Dead), 근접 공격 및 플레이어 피해 처리
       this.enemies.update(
         dt,
         this.player,
@@ -441,14 +455,20 @@
         this.playerDamage
       );
 
-      // 10. 전투 방 적 처치 집계, 방 클리어 및 출입문 개방 처리
+      // 9-2. Phase 10: 보스 AI 상태 전이(Idle/Chase/Telegraph/Attack/Recovery/Dead), 공격 패턴 및 플레이어 피해 처리
+      if (this.boss) {
+        this.boss.update(dt, this.player, this.map, this.playerDamage);
+      }
+
+      // 10. 전투 방/보스 방 적 처치 집계, 방 클리어 및 출입문 개방 처리
       if (this.combatRooms) {
         this.combatRooms.update(
           dt,
           this.player,
           this.map,
           this.enemies,
-          this.isGameOver
+          this.isGameOver,
+          this.boss
         );
       }
 
@@ -463,7 +483,7 @@
       // 12. 플레이어 피격/회피 플로팅 팝업 및 피격 링 이펙트 갱신
       this.playerDamage.update(dt);
 
-      // 13. UI 동기화 (체력 바, 무기 강화 단계, 아이템 알림, 전투 방 HUD, 게임 오버 오버레이)
+      // 13. UI 동기화 (체력 바, 무기 강화 단계, 아이템 알림, 전투 방 HUD, 보스 체력 바, 게임 오버 오버레이)
       const uiInputState = this.isGameOver
         ? {
             up: false,
@@ -483,7 +503,8 @@
         this.player.getDashUIState(),
         this.isGameOver,
         this.items ? this.items.getUIState(this.player, this.combat) : null,
-        this.combatRooms ? this.combatRooms.getUIState() : null
+        this.combatRooms ? this.combatRooms.getUIState() : null,
+        this.boss ? this.boss.getUIState() : null
       );
     }
 
@@ -497,7 +518,8 @@
         this.testHazard,
         this.enemies,
         this.playerDamage,
-        this.items
+        this.items,
+        this.boss
       );
 
       if (this.minimap) {
@@ -506,7 +528,8 @@
           this.player,
           this.enemies,
           this.items,
-          this.renderer.camera
+          this.renderer.camera,
+          this.boss
         );
       }
     }

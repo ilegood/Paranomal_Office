@@ -32,6 +32,12 @@
       this.combatRoomCounterEl = document.getElementById('combat-room-counter');
       this.combatRoomDetailEl = document.getElementById('combat-room-detail');
 
+      // Phase 10: 상단 중앙 전용 보스 체력 바 요소
+      this.bossBarWrapEl = document.getElementById('boss-bar-wrap');
+      this.bossNameEl = document.getElementById('boss-name');
+      this.bossHpTextEl = document.getElementById('boss-hp-text');
+      this.bossHpFillEl = document.getElementById('boss-hp-bar-fill');
+
       this.keyEls = {
         up: document.getElementById('key-w'),
         left: document.getElementById('key-a'),
@@ -90,6 +96,7 @@
       this._lastPromptSig = '';
       this._lastBannerSig = '';
       this._lastCombatRoomSig = '';
+      this._lastBossSig = '';
     }
 
     /**
@@ -131,7 +138,7 @@
     }
 
     /**
-     * 플레이어의 체력, 입력 상태, 무기/강화 상태, 대시 상태, 아이템 안내, 전투 방 상태 및 사망 여부를 UI에 반영
+     * 플레이어의 체력, 입력 상태, 무기/강화 상태, 대시 상태, 아이템 안내, 전투 방 상태, 보스 상태 및 사망 여부를 UI에 반영
      */
     update(
       player,
@@ -140,7 +147,8 @@
       dashUIState = null,
       isGameOver = false,
       itemUIState = null,
-      combatRoomUIState = null
+      combatRoomUIState = null,
+      bossUIState = null
     ) {
       this._syncHealth(player.hp, player.maxHp, player.hurtFlashTimer > 0);
       const effectiveGameOver = isGameOver || Boolean(player.isDead);
@@ -160,6 +168,7 @@
 
       this._syncItems(effectiveGameOver ? null : itemUIState);
       this._syncCombatRoom(effectiveGameOver ? null : combatRoomUIState);
+      this._syncBoss(effectiveGameOver ? null : bossUIState);
     }
 
     _syncHealth(hp, maxHp, isHurt = false) {
@@ -431,6 +440,45 @@
       }
       if (this.combatRoomDetailEl) {
         this.combatRoomDetailEl.textContent = combatRoomState.detailText || '';
+      }
+    }
+
+    _syncBoss(bossUIState) {
+      if (!this.bossBarWrapEl) {
+        return;
+      }
+
+      // 보스 상태가 없거나, 각성/전투 개시 전이거나, 사망 후 숨김
+      const visible = Boolean(
+        bossUIState &&
+        (bossUIState.isAwakened || bossUIState.state !== 'Idle') &&
+        bossUIState.alive
+      );
+
+      const sig = visible
+        ? `${bossUIState.name}|${bossUIState.hp}|${bossUIState.maxHp}|${bossUIState.ratio}`
+        : 'hidden';
+
+      if (sig === this._lastBossSig) {
+        return;
+      }
+      this._lastBossSig = sig;
+
+      if (!visible) {
+        this.bossBarWrapEl.hidden = true;
+        return;
+      }
+
+      this.bossBarWrapEl.hidden = false;
+      if (this.bossNameEl) {
+        this.bossNameEl.textContent = bossUIState.name || '야근 감독관';
+      }
+      if (this.bossHpTextEl) {
+        this.bossHpTextEl.textContent = `${Math.round(bossUIState.hp)} / ${bossUIState.maxHp}`;
+      }
+      if (this.bossHpFillEl) {
+        const pct = Math.max(0, Math.min(100, (bossUIState.hp / bossUIState.maxHp) * 100));
+        this.bossHpFillEl.style.width = `${pct.toFixed(1)}%`;
       }
     }
   }

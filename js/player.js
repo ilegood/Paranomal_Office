@@ -104,6 +104,22 @@
       this.hurtFlashTimer = 0;
     }
 
+    get x() {
+      return this.position.x;
+    }
+
+    set x(val) {
+      this.position.x = val;
+    }
+
+    get y() {
+      return this.position.y;
+    }
+
+    set y(val) {
+      this.position.y = val;
+    }
+
     /**
      * 마우스 조준 방향 계산 시 기준이 되는 플레이어 상체/무기 중심 월드 좌표 반환
      */
@@ -244,6 +260,10 @@
      */
     isInvulnerable() {
       return this.isDashInvulnerable() || this.isHitInvulnerable();
+    }
+
+    get isInvincible() {
+      return this.isInvulnerable();
     }
 
     /**

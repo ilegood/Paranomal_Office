@@ -36,7 +36,7 @@
           <div class="hud-top-right">
             <aside class="hud-card prototype-badge">
               <span class="status-dot" aria-hidden="true"></span>
-              <span class="prototype-text">PROTOTYPE · Phase 9 (전투 방 및 문 잠금 시스템)</span>
+              <span class="prototype-text">PROTOTYPE · Phase 10 (보스 방 및 기본 보스 전투)</span>
             </aside>
 
             <aside id="minimap-panel" class="hud-card minimap-panel" aria-label="전체 구역 미니맵">
@@ -61,6 +61,20 @@
             </div>
           </div>
         </div>
+
+        <!-- Phase 10: 상단 중앙 전용 보스 체력 바 (야근 감독관, 플레이어 체력/미니맵/무기 패널과 비간섭) -->
+        <section id="boss-bar-wrap" class="hud-card boss-bar-wrap" role="region" aria-label="보스 체력 정보" hidden>
+          <div class="boss-bar-header">
+            <div class="boss-title-row">
+              <span class="boss-badge">BOSS</span>
+              <span id="boss-name" class="boss-name">야근 감독관</span>
+            </div>
+            <span id="boss-hp-text" class="boss-hp-text">500 / 500</span>
+          </div>
+          <div class="boss-hp-bar-track">
+            <div id="boss-hp-bar-fill" class="boss-hp-bar-fill" style="width: 100%;"></div>
+          </div>
+        </section>
 
         <!-- 전투 방 진입·진행·완료 상태 및 남은 적 수 표시 HUD (상단 중앙 배치, 기존 UI와 비겹침) -->
         <div id="combat-room-hud" class="hud-card combat-room-hud" role="status" hidden>
@@ -180,6 +194,7 @@
   <script src="js/player.js"></script>
   <script src="js/movement.js"></script>
   <script src="js/enemy.js"></script>
+  <script src="js/boss.js"></script>
   <script src="js/combat-room.js"></script>
   <script src="js/combat.js"></script>
   <script src="js/item.js"></script>

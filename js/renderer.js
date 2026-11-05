@@ -109,7 +109,8 @@
       testHazard = null,
       enemySystem = null,
       playerDamageSystem = null,
-      itemSystem = null
+      itemSystem = null,
+      boss = null
     ) {
       if (player && officeMap) {
         this.updateCamera(player, officeMap);
@@ -143,7 +144,10 @@
       if (enemySystem) {
         this._drawEnemyFloorIndicators(ctx, enemySystem);
       }
-      this._drawShadows(ctx, officeMap, player, combat, enemySystem, itemSystem);
+      if (boss) {
+        this._drawBossTelegraphs(ctx, boss);
+      }
+      this._drawShadows(ctx, officeMap, player, combat, enemySystem, itemSystem, boss);
       if (!player.isDead) {
         this._drawPlayerDirectionIndicator(ctx, player);
       }
@@ -247,6 +251,14 @@
         }
       }
 
+      if (boss && (boss.alive || boss.deathTimer > 0)) {
+        renderQueue.push({
+          kind: 'boss',
+          sortY: boss.getSortY(),
+          data: boss
+        });
+      }
+
       const equippedWeaponId = combat ? combat.getCurrentWeaponState().config.id : null;
       const activeMeleeEffect =
         combat && combat.meleeEffects && combat.meleeEffects.length > 0
@@ -292,14 +304,20 @@
           case 'player':
             this._drawPlayer(ctx, item.data, item.weaponId, item.activeMeleeEffect);
             break;
+          case 'boss':
+            this._drawBoss(ctx, item.data);
+            break;
           default:
             break;
         }
       }
 
-      // 5. 플레이어/적 근접 휘두르기 궤적, 피격 스파크, 플로팅 피해량 및 아이템 피드백
+      // 5. 플레이어/적/보스 근접 휘두르기 궤적, 피격 스파크, 플로팅 피해량 및 아이템 피드백
       if (enemySystem) {
         this._drawEnemySlashEffects(ctx, enemySystem);
+      }
+      if (boss) {
+        this._drawBossAttackEffects(ctx, boss);
       }
       if (combat) {
         this._drawMeleeSlashArc(ctx, combat);
@@ -1073,7 +1091,7 @@
       }
     }
 
-    _drawShadows(ctx, officeMap, player, combat, enemySystem = null, itemSystem = null) {
+    _drawShadows(ctx, officeMap, player, combat, enemySystem = null, itemSystem = null, boss = null) {
       ctx.fillStyle = 'rgba(7, 9, 16, 0.45)';
 
       // 장애물 바닥 그림자 (쿼터뷰 입체감을 위해 우하단 오프셋)
@@ -1123,6 +1141,16 @@
           ctx.fill();
           ctx.restore();
         }
+      }
+
+      // 보스 발 그림자
+      if (boss && (boss.alive || boss.deathTimer > 0)) {
+        ctx.save();
+        ctx.fillStyle = 'rgba(20, 8, 30, 0.65)';
+        ctx.beginPath();
+        ctx.ellipse(boss.position.x, boss.position.y + 4, 30, 15, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
       }
 
       // 플레이어 발 그림자
@@ -2476,6 +2504,345 @@
       ctx.quadraticCurveTo(x, y, x + radius, y);
       ctx.closePath();
     }
+
+    /**
+     * Phase 10: 보스 공격 예고 바닥 표시 (패턴 A: 전방 부채꼴 예고, 패턴 B: 바닥 원형 장판 예고)
+     */
+    _drawBossTelegraphs(ctx, boss) {
+      if (!boss || !boss.alive || boss.state !== 'Telegraph') {
+        return;
+      }
+
+      const att = boss.currentAttack;
+      if (!att || att.phase !== 'telegraph') {
+        return;
+      }
+
+      const progress = Math.max(0, Math.min(1, att.timer / (att.totalTelegraph || 1)));
+
+      ctx.save();
+
+      if (att.pattern === 'melee_swing') {
+        // 패턴 A: 전방 부채꼴 예고 영역 (거리 ~96px, 각도 130도)
+        const halfArc = att.arcRad * 0.5;
+        const startAngle = att.aimAngle - halfArc;
+        const endAngle = att.aimAngle + halfArc;
+
+        // 1. 반투명 붉은 경고 부채꼴 기본 영역
+        ctx.fillStyle = 'rgba(244, 63, 94, 0.16)';
+        ctx.beginPath();
+        ctx.moveTo(boss.position.x, boss.position.y);
+        ctx.arc(boss.position.x, boss.position.y, att.range, startAngle, endAngle);
+        ctx.closePath();
+        ctx.fill();
+
+        // 2. 시간에 따라 바깥쪽으로 채워지는 강렬한 진행률 부채꼴
+        const fillRadius = att.range * progress;
+        ctx.fillStyle = 'rgba(244, 63, 94, 0.32)';
+        ctx.beginPath();
+        ctx.moveTo(boss.position.x, boss.position.y);
+        ctx.arc(boss.position.x, boss.position.y, fillRadius, startAngle, endAngle);
+        ctx.closePath();
+        ctx.fill();
+
+        // 3. 점멸하는 붉은 외곽선
+        ctx.strokeStyle = `rgba(251, 113, 133, ${(0.6 + Math.sin(progress * Math.PI * 4) * 0.35).toFixed(2)})`;
+        ctx.lineWidth = 2.4;
+        ctx.stroke();
+
+        // 조준 중심선
+        ctx.strokeStyle = 'rgba(254, 205, 211, 0.6)';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.moveTo(boss.position.x, boss.position.y);
+        ctx.lineTo(
+          boss.position.x + Math.cos(att.aimAngle) * att.range,
+          boss.position.y + Math.sin(att.aimAngle) * att.range
+        );
+        ctx.stroke();
+      } else if (att.pattern === 'floor_slam') {
+        // 패턴 B: 플레이어 발밑 바닥 원형 경고 장판 (반경 ~72px)
+        const cx = att.targetX;
+        const cy = att.targetY;
+        const rad = att.slamRadius;
+
+        // 1. 기본 원형 위험 영역
+        ctx.fillStyle = 'rgba(225, 29, 72, 0.18)';
+        ctx.beginPath();
+        ctx.arc(cx, cy, rad, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 2. 중심에서 바깥쪽으로 확장되는 진행률 원
+        const currR = rad * progress;
+        ctx.fillStyle = 'rgba(244, 63, 94, 0.32)';
+        ctx.beginPath();
+        ctx.arc(cx, cy, currR, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 3. 맥동하는 경고 외곽 링
+        ctx.strokeStyle = `rgba(251, 113, 133, ${(0.65 + Math.sin(progress * Math.PI * 5) * 0.3).toFixed(2)})`;
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+
+        // 4. 중앙 경고 마크 (!)
+        ctx.font = '900 18px "Malgun Gothic", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 3.5;
+        ctx.strokeText('!', cx, cy);
+        ctx.fillStyle = '#fde047';
+        ctx.fillText('!', cx, cy);
+      }
+
+      ctx.restore();
+    }
+
+    /**
+     * Phase 10: 보스 공격 시각 효과 (패턴 A 휘두르기 궤적 및 패턴 B 바닥 충격파 링)
+     */
+    _drawBossAttackEffects(ctx, boss) {
+      if (!boss) return;
+
+      // 1. 패턴 A: 근접 휘두르기 붉은 궤적
+      for (let i = 0; i < boss.activeSlashArcs.length; i++) {
+        const arc = boss.activeSlashArcs[i];
+        const t = Math.min(1, arc.elapsed / arc.duration);
+        const alpha = Math.max(0, 1 - t * 1.2);
+        const halfArc = arc.arcRad * 0.5;
+
+        ctx.save();
+        ctx.translate(arc.x, arc.y);
+        ctx.globalAlpha = alpha;
+        ctx.strokeStyle = '#f43f5e';
+        ctx.lineWidth = 6 * (1 - t * 0.5);
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.arc(0, 0, arc.range * (0.85 + t * 0.25), arc.aimAngle - halfArc, arc.aimAngle + halfArc);
+        ctx.stroke();
+
+        ctx.strokeStyle = '#fecdd3';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // 2. 패턴 B: 바닥 강타 충격파 링
+      for (let i = 0; i < boss.activeSlamRings.length; i++) {
+        const ring = boss.activeSlamRings[i];
+        const t = Math.min(1, ring.elapsed / ring.duration);
+        const alpha = Math.max(0, 1 - t);
+        const currentRadius = ring.radius * (0.4 + t * 0.7);
+
+        ctx.save();
+        ctx.translate(ring.x, ring.y);
+        ctx.globalAlpha = alpha;
+
+        ctx.strokeStyle = '#f43f5e';
+        ctx.lineWidth = 4 * (1 - t * 0.4);
+        ctx.beginPath();
+        ctx.arc(0, 0, currentRadius, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.strokeStyle = '#fbbf24';
+        ctx.lineWidth = 1.8;
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    /**
+     * Phase 10: 보스 엔티티(야근 감독관) 카툰 그래픽 렌더링
+     */
+    _drawBoss(ctx, boss) {
+      const bx = boss.position.x;
+      const by = boss.position.y;
+      const isDead = boss.isDead();
+      const isFlashing = boss.hitFlashTimer > 0;
+      const shakeOffset = boss.shakeTimer > 0 ? (Math.random() - 0.5) * 5 : 0;
+
+      const isTelegraph = boss.state === 'Telegraph';
+      const isAttacking = boss.state === 'Attack';
+      const isRecovery = boss.state === 'Recovery';
+      const facingBack = boss.direction.facing === 'up';
+      const dirX = boss.direction.x;
+      const dirY = boss.direction.y;
+
+      const walkBob = boss.isMoving ? Math.abs(Math.sin(boss.walkPhase)) * 3 : 0;
+
+      ctx.save();
+      ctx.translate(bx + shakeOffset, by);
+
+      // 사망 연출 중 투명도 감쇠
+      if (isDead) {
+        const fade = Math.max(0, boss.deathTimer / 1.5);
+        ctx.globalAlpha = fade;
+      }
+
+      // 위압감 있는 대형 체구 스케일 적용 (약 1.38배)
+      ctx.scale(1.38, 1.38);
+
+      // 1. 배후 암흑 오라 (야근의 원혼 기운)
+      ctx.fillStyle = isTelegraph
+        ? 'rgba(239, 68, 68, 0.28)'
+        : isAttacking
+          ? 'rgba(244, 63, 94, 0.35)'
+          : 'rgba(88, 28, 135, 0.22)';
+      ctx.beginPath();
+      ctx.ellipse(0, -32 - walkBob, 28, 36, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 2. 다리 및 고급 가죽 구두
+      const legColor = isFlashing ? '#ffffff' : '#1e1b2e';
+      const shoeColor = isFlashing ? '#ffffff' : '#0f0e17';
+      this._fillStrokeRoundRect(ctx, -14, -12, 10, 14, 4, legColor, OUTLINE_COLOR, 2.2);
+      this._fillStrokeRoundRect(ctx, 4, -12, 10, 14, 4, legColor, OUTLINE_COLOR, 2.2);
+      this._fillStrokeRoundRect(ctx, -16, -2, 13, 5, 2.5, shoeColor, OUTLINE_COLOR, 2);
+      this._fillStrokeRoundRect(ctx, 3, -2, 13, 5, 2.5, shoeColor, OUTLINE_COLOR, 2);
+
+      // 3. 육중한 정장 코트 상체
+      const bodyTop = -46 - walkBob;
+      const coatColor = isFlashing
+        ? '#ffffff'
+        : isTelegraph
+          ? '#581c2f'
+          : '#23182b';
+
+      // 코트 본체
+      this._fillStrokeRoundRect(ctx, -21, bodyTop, 42, 38, 9, coatColor, OUTLINE_COLOR, 2.8);
+
+      // 4. 셔츠 칼라 및 붉은 넥타이 & 금색 타이핀 (정면/측면 시)
+      if (!facingBack) {
+        const tieX = dirX * 5;
+        // 와이셔츠 깃
+        ctx.fillStyle = isFlashing ? '#ffffff' : '#e2e8f0';
+        ctx.strokeStyle = OUTLINE_COLOR;
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.moveTo(tieX - 8, bodyTop + 2);
+        ctx.lineTo(tieX, bodyTop + 13);
+        ctx.lineTo(tieX + 8, bodyTop + 2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // 붉은 임원 넥타이
+        ctx.fillStyle = isFlashing ? '#fda4af' : '#e11d48';
+        ctx.beginPath();
+        ctx.moveTo(tieX - 1, bodyTop + 5);
+        ctx.lineTo(tieX + 4.5, bodyTop + 18);
+        ctx.lineTo(tieX, bodyTop + 27);
+        ctx.lineTo(tieX - 4.5, bodyTop + 18);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // 골드 타이 핀
+        ctx.fillStyle = '#fbbf24';
+        ctx.fillRect(tieX - 3.5, bodyTop + 15, 7, 2.5);
+      }
+
+      // 5. 양팔 (공격 준비 시 치켜들기 동작)
+      const armLift = isTelegraph ? -10 : isAttacking ? 6 : 0;
+      const armColor = isFlashing ? '#ffffff' : '#1f1627';
+      this._fillStrokeRoundRect(ctx, -27 + dirX * 2, bodyTop + 6 + armLift, 8.5, 22, 4, armColor, OUTLINE_COLOR, 2.4);
+      this._fillStrokeRoundRect(ctx, 18.5 + dirX * 2, bodyTop + 6 + armLift, 8.5, 22, 4, armColor, OUTLINE_COLOR, 2.4);
+
+      // 날카로운 그림자 손톱/손
+      const handColor = isFlashing ? '#ffffff' : '#3b0764';
+      ctx.fillStyle = handColor;
+      ctx.strokeStyle = OUTLINE_COLOR;
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.arc(-23 + dirX * 2, bodyTop + 28 + armLift, 4.5, 0, Math.PI * 2);
+      ctx.arc(23 + dirX * 2, bodyTop + 28 + armLift, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      // 6. 거대한 위압적 헤드 & 뿔 달린 어둠의 실루엣
+      const headY = -62 - walkBob;
+      const headR = 17;
+      const skinColor = isFlashing ? '#ffffff' : '#e9d5ff';
+
+      ctx.fillStyle = skinColor;
+      ctx.strokeStyle = OUTLINE_COLOR;
+      ctx.lineWidth = 2.8;
+      ctx.beginPath();
+      ctx.arc(0, headY, headR, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      // 어둠의 임원 뿔 머리장식
+      ctx.fillStyle = isFlashing ? '#ffffff' : '#160d24';
+      ctx.beginPath();
+      ctx.moveTo(-16, headY - 4);
+      ctx.lineTo(-22, headY - 24);
+      ctx.lineTo(-8, headY - 16);
+      ctx.lineTo(0, headY - 25);
+      ctx.lineTo(8, headY - 16);
+      ctx.lineTo(22, headY - 24);
+      ctx.lineTo(16, headY - 4);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // 번뜩이는 악마적 붉은 안광
+      if (!facingBack && !isDead) {
+        const eyeX = dirX * 5.5;
+        const eyeY = headY + 2 + Math.max(-2, dirY * 2.5);
+
+        ctx.fillStyle = '#f43f5e';
+        ctx.strokeStyle = OUTLINE_COLOR;
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.ellipse(-6 + eyeX, eyeY, 4, 2.6, -0.2, 0, Math.PI * 2);
+        ctx.ellipse(6 + eyeX, eyeY, 4, 2.6, 0.2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = '#fde047';
+        ctx.beginPath();
+        ctx.arc(-6 + eyeX, eyeY, 1.8, 0, Math.PI * 2);
+        ctx.arc(6 + eyeX, eyeY, 1.8, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // 7. 머리 위 보스 명판 및 미니 체력 바
+      if (!isDead) {
+        const barW = 56;
+        const barH = 7.5;
+        const barX = -barW * 0.5;
+        const barY = -96 - walkBob;
+        const hpRatio = Math.max(0, Math.min(1, boss.hp / boss.maxHp));
+
+        this._fillStrokeRoundRect(ctx, barX, barY, barW, barH, 3.5, '#0f0b18', OUTLINE_COLOR, 2);
+        if (hpRatio > 0) {
+          ctx.fillStyle = '#e11d48';
+          ctx.fillRect(barX + 1.5, barY + 1.5, (barW - 3) * hpRatio, barH - 3);
+        }
+
+        // 보스 라벨 텍스트
+        const stateText = isTelegraph
+          ? '공격 준비!'
+          : isAttacking
+            ? '공격!'
+            : isRecovery
+              ? '후열'
+              : '추적';
+        const label = `야근 감독관 [${stateText}]`;
+
+        ctx.font = 'bold 10px "Malgun Gothic", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.strokeStyle = OUTLINE_COLOR;
+        ctx.lineWidth = 3;
+        ctx.strokeText(label, 0, barY - 4);
+        ctx.fillStyle = isTelegraph ? '#fde047' : '#fda4af';
+        ctx.fillText(label, 0, barY - 4);
+      }
+
+      ctx.restore();
+    }
+
   }
 
   PO.Renderer = Renderer;

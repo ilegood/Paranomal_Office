@@ -622,6 +622,89 @@ body {
   color: #fda4af;
 }
 
+/* Phase 10: 화면 상단 중앙 전용 보스 체력 바 (플레이어 체력/미니맵/무기/대시/아이템 UI 비간섭) */
+.boss-bar-wrap {
+  position: absolute;
+  top: clamp(12px, 1.8vh, 18px);
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: clamp(280px, 26vw, 360px);
+  padding: 8px 16px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-color: #f43f5e;
+  background: rgba(22, 14, 28, 0.94);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.75), 0 0 20px rgba(244, 63, 94, 0.35);
+  z-index: 15;
+  white-space: nowrap;
+}
+
+.boss-bar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.boss-title-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.boss-badge {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  color: #fff1f2;
+  background: #e11d48;
+  border-radius: 4px;
+  padding: 1px 6px;
+  box-shadow: 0 0 8px rgba(225, 29, 72, 0.65);
+}
+
+.boss-name {
+  font-size: clamp(13px, 1.1vw, 15px);
+  font-weight: 900;
+  color: #fda4af;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+.boss-hp-text {
+  font-size: clamp(11.5px, 0.95vw, 13px);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: #fde047;
+}
+
+.boss-hp-bar-track {
+  width: 100%;
+  height: 10px;
+  background: #0d0a14;
+  border: 1.5px solid #331526;
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+
+.boss-hp-bar-fill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, #e11d48 0%, #f43f5e 50%, #fb7185 100%);
+  border-radius: 4px;
+  transition: width 0.12s ease-out;
+}
+
+/* 보스 바 활성 시 알림 배너 하단 자동 재배치 (요소 겹침 방지) */
+.boss-bar-wrap:not([hidden]) ~ .combat-room-hud {
+  top: clamp(66px, 8.5vh, 76px);
+}
+
+.boss-bar-wrap:not([hidden]) ~ .item-feedback-banner {
+  top: clamp(118px, 14.5vh, 132px);
+}
+
 /* 전투 방 상태 및 남은 적 수 안내 HUD (상단 중앙 배치, 체력·미니맵·무기·대시·아이템 배너와 비간섭) */
 .combat-room-hud {
   position: absolute;

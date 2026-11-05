@@ -124,9 +124,16 @@
     }
 
     /**
-     * 매 프레임 실제 맵·플레이어·적·아이템 데이터를 읽어 미니맵을 갱신
+     * 매 프레임 실제 맵·플레이어·적·아이템·보스 데이터를 읽어 미니맵을 갱신
      */
-    render(officeMap, player, enemySystem = null, itemSystem = null, camera = null) {
+    render(
+      officeMap,
+      player,
+      enemySystem = null,
+      itemSystem = null,
+      camera = null,
+      boss = null
+    ) {
       if (!this.canvas || !this.ctx || !officeMap || !player) {
         return;
       }
@@ -215,7 +222,21 @@
         let strokeColor = '#566d99';
         let strokeWidth = isCurrent ? 1.9 : 1.3;
 
-        if (r.type === 'combat') {
+        if (r.type === 'boss') {
+          if (roomState === 'Active') {
+            fillColor = '#6b1126';
+            strokeColor = '#f43f5e';
+            strokeWidth = 2.4;
+          } else if (roomState === 'Cleared') {
+            fillColor = isCurrent ? '#234735' : '#1b3729';
+            strokeColor = isCurrent ? '#86efac' : '#4ade80';
+          } else {
+            // 미방문 보스 방: 어둡고 불길한 심홍/보라색
+            fillColor = isCurrent ? '#42163b' : '#2e0f29';
+            strokeColor = isCurrent ? '#f472b6' : '#9d226a';
+            strokeWidth = 1.7;
+          }
+        } else if (r.type === 'combat') {
           if (roomState === 'Active') {
             // 전투 진행 중인 방: 별도의 붉은 봉쇄 색상으로 표시
             fillColor = '#5c1d2e';
@@ -366,6 +387,45 @@
         }
       }
 
+      // 8-2. Phase 10: 생존 중인 보스(야근 감독관) 전용 대형 마커 표시
+      let bossMarker = null;
+      if (boss && boss.alive && !boss.isDead()) {
+        const bmp = proj.worldToMini(boss.position.x, boss.position.y);
+        const bossMarkerR = 5.2 * markerScale;
+        bossMarker = { id: boss.id, x: bmp.x, y: bmp.y };
+
+        ctx.save();
+        ctx.translate(bmp.x, bmp.y);
+
+        // 보스 외곽 붉은 펄스 링
+        const bossPulse = 0.5 + 0.5 * Math.sin(this._pulseTime * 3);
+        ctx.beginPath();
+        ctx.arc(0, 0, bossMarkerR + 2.5 + bossPulse * 2.2, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(244, 63, 94, 0.35)';
+        ctx.fill();
+
+        // 보스 본체 원형 마커
+        ctx.beginPath();
+        ctx.arc(0, 0, bossMarkerR, 0, Math.PI * 2);
+        ctx.fillStyle = '#e11d48';
+        ctx.fill();
+        ctx.lineWidth = 1.6;
+        ctx.strokeStyle = '#090d16';
+        ctx.stroke();
+
+        // 보스 중심 골드 다이아몬드 마커
+        ctx.fillStyle = '#fde047';
+        ctx.beginPath();
+        ctx.moveTo(0, -bossMarkerR * 0.55);
+        ctx.lineTo(bossMarkerR * 0.55, 0);
+        ctx.lineTo(0, bossMarkerR * 0.55);
+        ctx.lineTo(-bossMarkerR * 0.55, 0);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.restore();
+      }
+
       // 9. 플레이어 현재 위치 표시 (가장 명확하게 구분되는 시안 펄스 링 + 시선 방향 + 화이트 코어)
       const playerMini = proj.worldToMini(player.position.x, player.position.y);
       const pulse = 0.5 + 0.5 * Math.sin(this._pulseTime * 2.2);
@@ -425,6 +485,7 @@
         playerMiniPos: { x: playerMini.x, y: playerMini.y },
         playerWorldPos: { x: player.position.x, y: player.position.y },
         enemyMarkers,
+        bossMarker,
         itemMarkers
       };
     }

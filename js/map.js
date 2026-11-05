@@ -9,7 +9,8 @@
   const ROOM_TYPES = Object.freeze({
     START: 'start',
     COMBAT: 'combat',
-    SUPPLY: 'supply'
+    SUPPLY: 'supply',
+    BOSS: 'boss'
   });
 
   /**
@@ -566,6 +567,7 @@
         roomId: layoutConfig.playerSpawn.roomId
       };
       this.enemySpawns = layoutConfig.enemySpawns.map((s) => ({ ...s }));
+      this.bossSpawn = layoutConfig.bossSpawn ? { ...layoutConfig.bossSpawn } : null;
       this.itemSpawns = layoutConfig.itemSpawns.map((s) => ({ ...s }));
       this.targetSpawns = layoutConfig.targetSpawns.map((s) => ({ ...s }));
       this.testHazardSpawn = layoutConfig.testHazardSpawn
