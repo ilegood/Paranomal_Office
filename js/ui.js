@@ -26,6 +26,12 @@
       this.itemBannerTitleEl = document.getElementById('item-feedback-title');
       this.itemBannerDetailEl = document.getElementById('item-feedback-detail');
 
+      // 전투 방 상태 및 남은 적 수 안내 요소
+      this.combatRoomHudEl = document.getElementById('combat-room-hud');
+      this.combatRoomTitleEl = document.getElementById('combat-room-title');
+      this.combatRoomCounterEl = document.getElementById('combat-room-counter');
+      this.combatRoomDetailEl = document.getElementById('combat-room-detail');
+
       this.keyEls = {
         up: document.getElementById('key-w'),
         left: document.getElementById('key-a'),
@@ -83,6 +89,7 @@
 
       this._lastPromptSig = '';
       this._lastBannerSig = '';
+      this._lastCombatRoomSig = '';
     }
 
     /**
@@ -124,7 +131,7 @@
     }
 
     /**
-     * 플레이어의 체력, 입력 상태, 무기/강화 상태, 대시 상태, 아이템 안내 및 사망 여부를 UI에 반영
+     * 플레이어의 체력, 입력 상태, 무기/강화 상태, 대시 상태, 아이템 안내, 전투 방 상태 및 사망 여부를 UI에 반영
      */
     update(
       player,
@@ -132,7 +139,8 @@
       combatUIState = null,
       dashUIState = null,
       isGameOver = false,
-      itemUIState = null
+      itemUIState = null,
+      combatRoomUIState = null
     ) {
       this._syncHealth(player.hp, player.maxHp, player.hurtFlashTimer > 0);
       const effectiveGameOver = isGameOver || Boolean(player.isDead);
@@ -151,6 +159,7 @@
       }
 
       this._syncItems(effectiveGameOver ? null : itemUIState);
+      this._syncCombatRoom(effectiveGameOver ? null : combatRoomUIState);
     }
 
     _syncHealth(hp, maxHp, isHurt = false) {
@@ -384,6 +393,44 @@
             }
           }
         }
+      }
+    }
+
+    _syncCombatRoom(combatRoomState) {
+      const visible = Boolean(combatRoomState && combatRoomState.visible);
+      const sig = visible
+        ? `${combatRoomState.mode}|${combatRoomState.title}|${combatRoomState.counterText}|${combatRoomState.detailText}|${combatRoomState.opacity ?? 1}`
+        : '';
+
+      if (sig === this._lastCombatRoomSig) {
+        return;
+      }
+      this._lastCombatRoomSig = sig;
+
+      if (!this.combatRoomHudEl) {
+        return;
+      }
+
+      if (!visible) {
+        this.combatRoomHudEl.hidden = true;
+        this.combatRoomHudEl.style.opacity = '';
+        this.combatRoomHudEl.classList.remove('is-start', 'is-clear');
+        return;
+      }
+
+      this.combatRoomHudEl.hidden = false;
+      this.combatRoomHudEl.classList.toggle('is-start', combatRoomState.mode === 'start');
+      this.combatRoomHudEl.classList.toggle('is-clear', combatRoomState.mode === 'clear');
+      this.combatRoomHudEl.style.opacity = String(combatRoomState.opacity ?? 1);
+
+      if (this.combatRoomTitleEl) {
+        this.combatRoomTitleEl.textContent = combatRoomState.title;
+      }
+      if (this.combatRoomCounterEl) {
+        this.combatRoomCounterEl.textContent = combatRoomState.counterText;
+      }
+      if (this.combatRoomDetailEl) {
+        this.combatRoomDetailEl.textContent = combatRoomState.detailText || '';
       }
     }
   }

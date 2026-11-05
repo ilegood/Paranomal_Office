@@ -174,6 +174,19 @@
         });
       }
 
+      if (Array.isArray(officeMap.doors)) {
+        for (let i = 0; i < officeMap.doors.length; i++) {
+          const door = officeMap.doors[i];
+          if (door.locked) {
+            renderQueue.push({
+              kind: 'locked_door',
+              sortY: door.y + door.height,
+              data: door
+            });
+          }
+        }
+      }
+
       if (itemSystem) {
         const activeItems = itemSystem.getActiveItems();
         for (let i = 0; i < activeItems.length; i++) {
@@ -257,6 +270,9 @@
             break;
           case 'obstacle':
             this._drawObstacle(ctx, item.data);
+            break;
+          case 'locked_door':
+            this._drawLockedDoorShutter(ctx, item.data);
             break;
           case 'item':
             this._drawWorldItem(ctx, item.data, item.isFocused);
@@ -376,9 +392,30 @@
         );
       }
 
-      // 4. 방과 복도를 연결하는 열린 문(Door) 문턱 및 문틀 프레임 표시
+      // 4. 전투 중(Active) 또는 클리어(Cleared) 전투 방 바닥 테두리 상태 피드백
+      const roomStateMap = new Map();
+      for (let i = 0; i < rooms.length; i++) {
+        const room = rooms[i];
+        roomStateMap.set(room.id, room.state || 'Unvisited');
+        if (room.type === 'combat' && room.state === 'Active') {
+          ctx.save();
+          ctx.strokeStyle = 'rgba(244, 63, 94, 0.42)';
+          ctx.lineWidth = 4;
+          ctx.strokeRect(room.x + 4, room.y + 4, room.width - 8, room.height - 8);
+          ctx.restore();
+        } else if (room.type === 'combat' && room.state === 'Cleared') {
+          ctx.save();
+          ctx.strokeStyle = 'rgba(74, 222, 128, 0.22)';
+          ctx.lineWidth = 3;
+          ctx.strokeRect(room.x + 4, room.y + 4, room.width - 8, room.height - 8);
+          ctx.restore();
+        }
+      }
+
+      // 5. 방과 복도를 연결하는 문(Door) 문턱 및 문틀 프레임 표시
       for (let i = 0; i < doors.length; i++) {
-        this._drawDoorThreshold(ctx, doors[i]);
+        const door = doors[i];
+        this._drawDoorThreshold(ctx, door, roomStateMap.get(door.roomId) || 'Unvisited');
       }
     }
 
@@ -441,10 +478,19 @@
     }
 
     /**
-     * 방과 복도 사이의 통과 가능한 문(Door) 바닥 문턱과 좌우 문설주 도형 렌더링
+     * 방과 복도 사이의 문(Door) 바닥 문턱과 좌우/상하 문설주 도형 렌더링
      */
-    _drawDoorThreshold(ctx, door) {
+    _drawDoorThreshold(ctx, door, roomState = 'Unvisited') {
       ctx.save();
+      const isLocked = Boolean(door.locked);
+      const isCleared = !isLocked && roomState === 'Cleared';
+      const plateColor = isLocked ? '#3f1d2b' : '#2b3752';
+      const railColor = isLocked
+        ? 'rgba(251, 113, 133, 0.72)'
+        : isCleared
+          ? 'rgba(74, 222, 128, 0.52)'
+          : 'rgba(148, 163, 184, 0.42)';
+      const postColor = isLocked ? '#64263b' : '#475569';
 
       if (door.orientation === 'vertical') {
         // 바닥 금속/슬레이트 문턱 플레이트
@@ -454,14 +500,14 @@
           door.y + 2,
           door.width,
           door.height - 4,
-          '#2b3752',
+          plateColor,
           OUTLINE_COLOR,
           1.8
         );
 
         // 중앙 레일 홈
-        ctx.strokeStyle = 'rgba(148, 163, 184, 0.42)';
-        ctx.lineWidth = 1.4;
+        ctx.strokeStyle = railColor;
+        ctx.lineWidth = 1.5;
         ctx.setLineDash([5, 5]);
         ctx.beginPath();
         ctx.moveTo(door.x + door.width * 0.5, door.y + 8);
@@ -469,15 +515,15 @@
         ctx.stroke();
         ctx.setLineDash([]);
 
-        // 상/하 열린 문틀 포스트(문설주)
-        this._fillStrokeRect(ctx, door.x - 3, door.y - 4, door.width + 6, 8, '#475569', OUTLINE_COLOR, 2);
+        // 상/하 문틀 포스트(문설주)
+        this._fillStrokeRect(ctx, door.x - 3, door.y - 4, door.width + 6, 8, postColor, OUTLINE_COLOR, 2);
         this._fillStrokeRect(
           ctx,
           door.x - 3,
           door.y + door.height - 4,
           door.width + 6,
           8,
-          '#475569',
+          postColor,
           OUTLINE_COLOR,
           2
         );
@@ -489,13 +535,13 @@
           door.y,
           door.width - 4,
           door.height,
-          '#2b3752',
+          plateColor,
           OUTLINE_COLOR,
           1.8
         );
 
-        ctx.strokeStyle = 'rgba(148, 163, 184, 0.42)';
-        ctx.lineWidth = 1.4;
+        ctx.strokeStyle = railColor;
+        ctx.lineWidth = 1.5;
         ctx.setLineDash([5, 5]);
         ctx.beginPath();
         ctx.moveTo(door.x + 8, door.y + door.height * 0.5);
@@ -503,18 +549,104 @@
         ctx.stroke();
         ctx.setLineDash([]);
 
-        // 좌/우 열린 문틀 포스트(문설주)
-        this._fillStrokeRect(ctx, door.x - 4, door.y - 3, 8, door.height + 6, '#475569', OUTLINE_COLOR, 2);
+        // 좌/우 문틀 포스트(문설주)
+        this._fillStrokeRect(ctx, door.x - 4, door.y - 3, 8, door.height + 6, postColor, OUTLINE_COLOR, 2);
         this._fillStrokeRect(
           ctx,
           door.x + door.width - 4,
           door.y - 3,
           8,
           door.height + 6,
-          '#475569',
+          postColor,
           OUTLINE_COLOR,
           2
         );
+      }
+
+      ctx.restore();
+    }
+
+    /**
+     * 전투 진행 중 잠긴 출입문(door.locked === true)의 2.5D 철제 방화 셔터 및 경고등 렌더링
+     */
+    _drawLockedDoorShutter(ctx, door) {
+      ctx.save();
+      const z = door.zHeight ?? 36;
+      const topY = door.y - z;
+
+      // 1. 정면/측면 입체 철제 셔터 기둥 몸체
+      this._fillStrokeRect(
+        ctx,
+        door.x,
+        door.y,
+        door.width,
+        door.height,
+        '#2b1929',
+        OUTLINE_COLOR,
+        2.2
+      );
+
+      // 2. 상단 셔터 단면 캡
+      this._fillStrokeRect(
+        ctx,
+        door.x,
+        topY,
+        door.width,
+        door.height,
+        '#382238',
+        OUTLINE_COLOR,
+        2.2
+      );
+
+      // 3. 전면 수직 장갑판 면 (남쪽 하단 두께 면)
+      this._fillStrokeRect(
+        ctx,
+        door.x,
+        door.y + door.height - z,
+        door.width,
+        z,
+        '#241524',
+        OUTLINE_COLOR,
+        2.2
+      );
+
+      // 4. 붉은 봉쇄 에너지 라인 및 잠금 경고등 표시
+      if (door.orientation === 'vertical') {
+        const midX = door.x + door.width * 0.5;
+        ctx.strokeStyle = '#fb7185';
+        ctx.lineWidth = 2.6;
+        ctx.beginPath();
+        ctx.moveTo(midX, topY + 6);
+        ctx.lineTo(midX, topY + door.height - 6);
+        ctx.stroke();
+
+        // 중앙 잠금 코어 인디케이터
+        const cy = topY + door.height * 0.5;
+        this._fillStrokeRoundRect(ctx, door.x - 2, cy - 10, door.width + 4, 20, 4, '#4c1d2e', OUTLINE_COLOR, 1.8);
+        ctx.fillStyle = '#f43f5e';
+        ctx.beginPath();
+        ctx.arc(midX, cy, 4, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        const midY = topY + door.height * 0.5;
+        ctx.strokeStyle = '#fb7185';
+        ctx.lineWidth = 2.6;
+        ctx.beginPath();
+        ctx.moveTo(door.x + 6, midY);
+        ctx.lineTo(door.x + door.width - 6, midY);
+        ctx.stroke();
+
+        // 정면 경고 스트라이프 바
+        ctx.fillStyle = '#e11d48';
+        ctx.fillRect(door.x + 6, door.y + door.height - z * 0.62, door.width - 12, 5);
+
+        // 중앙 잠금 코어 인디케이터
+        const cx = door.x + door.width * 0.5;
+        this._fillStrokeRoundRect(ctx, cx - 12, topY - 2, 24, door.height + 4, 4, '#4c1d2e', OUTLINE_COLOR, 1.8);
+        ctx.fillStyle = '#f43f5e';
+        ctx.beginPath();
+        ctx.arc(cx, midY, 4, 0, Math.PI * 2);
+        ctx.fill();
       }
 
       ctx.restore();

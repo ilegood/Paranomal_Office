@@ -201,19 +201,35 @@
         ctx.strokeRect(tl.x, tl.y, w, h);
       }
 
-      // 3. 방(Room) 구조 및 방 종류별 구분 색상 + 현재 위치한 방 하이라이트 표시
+      // 3. 방(Room) 구조 및 방 종류·전투 상태(Unvisited / Active / Cleared)별 구분 색상 표시
+      const roomStates = [];
       for (let i = 0; i < rooms.length; i++) {
         const r = rooms[i];
         const isCurrent = Boolean(activeSpace && activeSpace.id === r.id);
+        const roomState = r.state || 'Unvisited';
         const tl = proj.worldToMini(r.x, r.y);
         const w = r.width * proj.scale;
         const h = r.height * proj.scale;
 
         let fillColor = '#22314d';
         let strokeColor = '#566d99';
+        let strokeWidth = isCurrent ? 1.9 : 1.3;
+
         if (r.type === 'combat') {
-          fillColor = isCurrent ? '#352d54' : '#26223e';
-          strokeColor = isCurrent ? '#93c5fd' : '#635b8c';
+          if (roomState === 'Active') {
+            // 전투 진행 중인 방: 별도의 붉은 봉쇄 색상으로 표시
+            fillColor = '#5c1d2e';
+            strokeColor = '#fb7185';
+            strokeWidth = 2.2;
+          } else if (roomState === 'Cleared') {
+            // 클리어된 전투 방: 구분되는 에메랄드 그린 계열 색상으로 표시
+            fillColor = isCurrent ? '#234735' : '#1b3729';
+            strokeColor = isCurrent ? '#86efac' : '#4ade80';
+          } else {
+            // 아직 방문하지 않은 전투 방(Unvisited): 기존 표시 방식 유지
+            fillColor = isCurrent ? '#352d54' : '#26223e';
+            strokeColor = isCurrent ? '#93c5fd' : '#635b8c';
+          }
         } else if (r.type === 'supply') {
           fillColor = isCurrent ? '#1f4547' : '#193538';
           strokeColor = isCurrent ? '#5eead4' : '#3d7a7d';
@@ -226,8 +242,16 @@
         ctx.fillRect(tl.x, tl.y, w, h);
 
         ctx.strokeStyle = strokeColor;
-        ctx.lineWidth = isCurrent ? 1.9 : 1.3;
+        ctx.lineWidth = strokeWidth;
         ctx.strokeRect(tl.x, tl.y, w, h);
+
+        roomStates.push({
+          id: r.id,
+          type: r.type,
+          state: roomState,
+          fillColor,
+          strokeColor
+        });
       }
 
       // 4. 방 내부 장애물(책상·기둥 등) 미니 실루엣 표시
@@ -240,14 +264,20 @@
         ctx.fillRect(tl.x, tl.y, w, h);
       }
 
-      // 5. 방과 복도를 잇는 문(Door) 개구부 표시
+      // 5. 방과 복도를 잇는 문(Door) 개구부 표시 (잠긴 문은 붉은 봉쇄 색상으로 표시)
+      let lockedDoorCount = 0;
       for (let i = 0; i < doors.length; i++) {
         const d = doors[i];
         const tl = proj.worldToMini(d.x, d.y);
         const w = Math.max(2.2, d.width * proj.scale);
         const h = Math.max(2.2, d.height * proj.scale);
 
-        ctx.fillStyle = '#93c5fd';
+        if (d.locked) {
+          lockedDoorCount++;
+          ctx.fillStyle = '#f43f5e';
+        } else {
+          ctx.fillStyle = '#93c5fd';
+        }
         ctx.fillRect(tl.x, tl.y, w, h);
       }
 
@@ -390,6 +420,8 @@
         roomCount: rooms.length,
         corridorCount: corridors.length,
         doorCount: doors.length,
+        lockedDoorCount,
+        roomStates,
         playerMiniPos: { x: playerMini.x, y: playerMini.y },
         playerWorldPos: { x: player.position.x, y: player.position.y },
         enemyMarkers,

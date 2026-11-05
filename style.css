@@ -622,10 +622,84 @@ body {
   color: #fda4af;
 }
 
-/* 아이템 획득 결과 알림 배너 (상단 중앙 벽면 영역 배치, 기존 체력·무기 UI 비간섭) */
+/* 전투 방 상태 및 남은 적 수 안내 HUD (상단 중앙 배치, 체력·미니맵·무기·대시·아이템 배너와 비간섭) */
+.combat-room-hud {
+  position: absolute;
+  top: clamp(12px, 1.8vh, 18px);
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: clamp(210px, 20vw, 258px);
+  padding: 7px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  border-color: #f43f5e;
+  background: rgba(20, 16, 30, 0.93);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.68), 0 0 16px rgba(244, 63, 94, 0.24);
+  white-space: nowrap;
+}
+
+.combat-room-hud.is-start {
+  border-color: #fb7185;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.72), 0 0 22px rgba(244, 63, 94, 0.42);
+}
+
+.combat-room-hud.is-clear {
+  border-color: #4ade80;
+  background: rgba(14, 26, 28, 0.92);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.68), 0 0 18px rgba(74, 222, 128, 0.28);
+}
+
+.combat-room-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.combat-room-title {
+  font-size: clamp(12.5px, 1.05vw, 14.5px);
+  font-weight: 900;
+  color: #fda4af;
+  letter-spacing: -0.01em;
+}
+
+.combat-room-hud.is-start .combat-room-title {
+  color: #ffe4e6;
+}
+
+.combat-room-hud.is-clear .combat-room-title {
+  color: #4ade80;
+}
+
+.combat-room-counter {
+  font-size: clamp(12px, 1vw, 13.5px);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: #fde047;
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(251, 191, 36, 0.42);
+  border-radius: 6px;
+  padding: 1px 8px;
+}
+
+.combat-room-hud.is-clear .combat-room-counter {
+  color: #bbf7d0;
+  border-color: rgba(74, 222, 128, 0.45);
+}
+
+.combat-room-detail {
+  font-size: clamp(10px, 0.84vw, 11.5px);
+  font-weight: 700;
+  color: #cbd5e1;
+}
+
+/* 아이템 획득 결과 알림 배너 (전투 방 HUD 아래쪽 상단 중앙 배치, 기존 모든 UI와 비간섭) */
 .item-feedback-banner {
   position: absolute;
-  top: clamp(64px, 8.2vh, 78px);
+  top: clamp(78px, 10vh, 92px);
   left: 50%;
   transform: translateX(-50%);
   display: flex;

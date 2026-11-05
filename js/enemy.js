@@ -52,6 +52,7 @@
     constructor(config = {}) {
       this.id = config.id ?? 'enemy-1';
       this.isEnemy = true;
+      this.roomId = config.roomId ?? null;
 
       // 위치 (쿼터뷰 바닥 접지면 중심 좌표)
       this.position = {
@@ -238,18 +239,27 @@
               { id: 'enemy-combat-2', x: 2055, y: 910 }
             ];
 
-      return spawns.map((spawn, idx) => ({
-        id: spawn.id ?? `enemy-office-${idx + 1}`,
-        x: spawn.x,
-        y: spawn.y,
-        playerBaseSpeed,
-        maxHp: spawn.maxHp ?? ENEMY_CONFIG.maxHp,
-        detectionRange: spawn.detectionRange ?? ENEMY_CONFIG.detectionRange,
-        attackRange: spawn.attackRange ?? ENEMY_CONFIG.attackRange,
-        attackDamage: spawn.attackDamage ?? ENEMY_CONFIG.attackDamage,
-        attackCooldown: spawn.attackCooldown ?? ENEMY_CONFIG.attackCooldown,
-        attackWindupDuration: spawn.attackWindupDuration ?? ENEMY_CONFIG.attackWindupDuration
-      }));
+      return spawns.map((spawn, idx) => {
+        const assignedRoomId =
+          spawn.roomId ??
+          (officeMap && typeof officeMap.getRoomAt === 'function'
+            ? officeMap.getRoomAt(spawn.x, spawn.y)?.id ?? null
+            : null);
+
+        return {
+          id: spawn.id ?? `enemy-office-${idx + 1}`,
+          roomId: assignedRoomId,
+          x: spawn.x,
+          y: spawn.y,
+          playerBaseSpeed,
+          maxHp: spawn.maxHp ?? ENEMY_CONFIG.maxHp,
+          detectionRange: spawn.detectionRange ?? ENEMY_CONFIG.detectionRange,
+          attackRange: spawn.attackRange ?? ENEMY_CONFIG.attackRange,
+          attackDamage: spawn.attackDamage ?? ENEMY_CONFIG.attackDamage,
+          attackCooldown: spawn.attackCooldown ?? ENEMY_CONFIG.attackCooldown,
+          attackWindupDuration: spawn.attackWindupDuration ?? ENEMY_CONFIG.attackWindupDuration
+        };
+      });
     }
 
     /**

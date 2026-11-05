@@ -36,7 +36,7 @@
           <div class="hud-top-right">
             <aside class="hud-card prototype-badge">
               <span class="status-dot" aria-hidden="true"></span>
-              <span class="prototype-text">PROTOTYPE · Phase 8 (랜덤 맵 생성 및 시스템 연동)</span>
+              <span class="prototype-text">PROTOTYPE · Phase 9 (전투 방 및 문 잠금 시스템)</span>
             </aside>
 
             <aside id="minimap-panel" class="hud-card minimap-panel" aria-label="전체 구역 미니맵">
@@ -62,7 +62,16 @@
           </div>
         </div>
 
-        <!-- 아이템 획득 결과 피드백 배너 (회복량 / 강화 단계 변화 표시, 기존 체력·무기 UI와 분리된 상단 중앙) -->
+        <!-- 전투 방 진입·진행·완료 상태 및 남은 적 수 표시 HUD (상단 중앙 배치, 기존 UI와 비겹침) -->
+        <div id="combat-room-hud" class="hud-card combat-room-hud" role="status" hidden>
+          <div class="combat-room-row">
+            <span id="combat-room-title" class="combat-room-title">전투 시작!</span>
+            <span id="combat-room-counter" class="combat-room-counter">남은 적: 0</span>
+          </div>
+          <div id="combat-room-detail" class="combat-room-detail">전투 방 · 출입문 잠김</div>
+        </div>
+
+        <!-- 아이템 획득 결과 피드백 배너 (회복량 / 강화 단계 변화 표시, 기존 체력·무기·전투 UI와 분리) -->
         <div id="item-feedback-banner" class="hud-card item-feedback-banner" role="status" hidden>
           <span id="item-feedback-title" class="item-feedback-title">아이템 획득</span>
           <span id="item-feedback-detail" class="item-feedback-detail">효과 적용됨</span>
@@ -171,6 +180,7 @@
   <script src="js/player.js"></script>
   <script src="js/movement.js"></script>
   <script src="js/enemy.js"></script>
+  <script src="js/combat-room.js"></script>
   <script src="js/combat.js"></script>
   <script src="js/item.js"></script>
   <script src="js/test-hazard.js"></script>

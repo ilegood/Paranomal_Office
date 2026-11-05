@@ -169,6 +169,11 @@
         PO.EnemySystem.createDefaultEnemies(this.player.speed, this.map)
       );
 
+      // Phase 9: 전투 방 상태(Unvisited / Active / Cleared), 문 잠금 및 방별 적 수 추적 초기화
+      this.combatRooms = PO.CombatRoomSystem
+        ? new PO.CombatRoomSystem(this.map, this.enemies)
+        : null;
+
       this.combat = new PO.CombatSystem(PO.CombatSystem.createDefaultTargets(this.map));
 
       this.items = PO.ItemSystem
@@ -257,7 +262,8 @@
         this.combat.getUIState(),
         this.player.getDashUIState(),
         this.isGameOver,
-        this.items ? this.items.getUIState(this.player, this.combat) : null
+        this.items ? this.items.getUIState(this.player, this.combat) : null,
+        this.combatRooms ? this.combatRooms.getUIState() : null
       );
       this.render();
     }
@@ -281,7 +287,8 @@
         this.combat.getUIState(),
         this.player.getDashUIState(),
         this.isGameOver,
-        this.items ? this.items.getUIState(this.player, this.combat) : null
+        this.items ? this.items.getUIState(this.player, this.combat) : null,
+        this.combatRooms ? this.combatRooms.getUIState() : null
       );
       this.render();
 
@@ -364,6 +371,16 @@
           circleBlockers
         });
 
+        // 플레이어가 미방문 전투 방에 진입했다면 즉시 Active 전환 및 출입문 충돌체 잠금 적용
+        if (this.combatRooms) {
+          this.combatRooms.checkPlayerEntry(
+            this.player,
+            this.map,
+            this.enemies,
+            this.isGameOver
+          );
+        }
+
         // 카메라를 플레이어의 새 위치로 먼저 갱신한 뒤 조준 좌표를 재보정
         this.renderer.updateCamera(this.player, this.map);
 
@@ -424,7 +441,18 @@
         this.playerDamage
       );
 
-      // 10. 임시 무적 테스트용 위험 구역 판정 (분리된 선택 모듈)
+      // 10. 전투 방 적 처치 집계, 방 클리어 및 출입문 개방 처리
+      if (this.combatRooms) {
+        this.combatRooms.update(
+          dt,
+          this.player,
+          this.map,
+          this.enemies,
+          this.isGameOver
+        );
+      }
+
+      // 11. 임시 무적 테스트용 위험 구역 판정 (분리된 선택 모듈)
       if (this.testHazard) {
         this.testHazard.update(dt, this.player);
         if (this.player.isDead && !this.isGameOver) {
@@ -432,10 +460,10 @@
         }
       }
 
-      // 11. 플레이어 피격/회피 플로팅 팝업 및 피격 링 이펙트 갱신
+      // 12. 플레이어 피격/회피 플로팅 팝업 및 피격 링 이펙트 갱신
       this.playerDamage.update(dt);
 
-      // 12. UI 동기화 (체력 바, 무기 강화 단계, 아이템 획득 안내/결과 알림, 게임 오버 오버레이)
+      // 13. UI 동기화 (체력 바, 무기 강화 단계, 아이템 알림, 전투 방 HUD, 게임 오버 오버레이)
       const uiInputState = this.isGameOver
         ? {
             up: false,
@@ -454,7 +482,8 @@
         this.combat.getUIState(),
         this.player.getDashUIState(),
         this.isGameOver,
-        this.items ? this.items.getUIState(this.player, this.combat) : null
+        this.items ? this.items.getUIState(this.player, this.combat) : null,
+        this.combatRooms ? this.combatRooms.getUIState() : null
       );
     }
 

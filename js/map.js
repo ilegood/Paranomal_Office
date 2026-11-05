@@ -13,6 +13,15 @@
   });
 
   /**
+   * Phase 9: 각 방의 방문 및 전투 진행 상태 상수 정의
+   */
+  const ROOM_STATES = Object.freeze({
+    UNVISITED: 'Unvisited',
+    ACTIVE: 'Active',
+    CLEARED: 'Cleared'
+  });
+
+  /**
    * Phase 7 고정 탐험 맵 레이아웃 데이터 (렌더링 코드와 완전히 분리)
    * - 시작 방 1개, 전투 방 2개, 보급 방 1개
    * - 방 사이를 연결하는 복도 3개 및 통과 가능한 문 6개
@@ -520,6 +529,10 @@
       this.rooms = layoutConfig.rooms.map((room) => ({
         ...room,
         kind: 'room',
+        state: room.state ?? ROOM_STATES.UNVISITED,
+        totalEnemies: 0,
+        remainingEnemies: 0,
+        enemyIds: [],
         connections: [...(room.connections || [])],
         floorPalette: { ...room.floorPalette },
         lightGlows: (room.lightGlows || []).map((g) => ({ ...g })),
@@ -532,7 +545,17 @@
         floorPalette: { ...corridor.floorPalette }
       }));
 
-      this.doors = layoutConfig.doors.map((door) => ({ ...door }));
+      this.doors = layoutConfig.doors.map((door) => {
+        const locked = Boolean(door.locked);
+        return {
+          ...door,
+          locked,
+          passable: locked ? false : door.passable !== false,
+          solid: locked,
+          isLockedDoor: true,
+          zHeight: door.zHeight ?? 36
+        };
+      });
       this.floorMats = layoutConfig.floorMats.map((mat) => ({ ...mat }));
       this.obstacles = layoutConfig.obstacles.map((obs) => ({ ...obs }));
 
@@ -552,11 +575,24 @@
       // 방과 복도 외곽 경계에서 연결된 문/통로 구간을 제외한 실제 고체 벽(Wall) 목록 생성
       this.walls = this._buildWallsFromSpaces();
 
-      // 고체 충돌체 캐시 (벽 + 고체 가구/기둥 장애물)
+      // 고체 충돌체 캐시 (벽 + 고체 가구/기둥 장애물 + 현재 잠긴 출입문)
+      this._lockedDoorColliders = [];
+      this._solidColliders = [];
+      this._wallsAndLockedDoors = [];
+      this._rebuildSolidColliders();
+    }
+
+    /**
+     * 벽, 내부 고정 장애물, 현재 잠긴 출입문(door.locked === true)을 실제 충돌 배열에 동기화
+     */
+    _rebuildSolidColliders() {
+      this._lockedDoorColliders = this.doors.filter((door) => door.locked && !door.passable);
       this._solidColliders = [
         ...this.walls,
-        ...this.obstacles.filter((obs) => obs.solid !== false)
+        ...this.obstacles.filter((obs) => obs.solid !== false),
+        ...this._lockedDoorColliders
       ];
+      this._wallsAndLockedDoors = [...this.walls, ...this._lockedDoorColliders];
     }
 
     /**
@@ -809,18 +845,82 @@
     }
 
     /**
-     * 충돌 판정 대상 고체 장애물 목록(모든 방·복도 벽 + 책상·기둥·캐비닛 등) 반환
-     * 문(doors)은 통과 가능하므로 제외된다.
+     * 충돌 판정 대상 고체 장애물 목록(모든 방·복도 벽 + 책상·기둥·캐비닛 + 잠긴 출입문) 반환
+     * 열린 문(passable: true, locked: false)은 제외되며, 잠긴 문은 즉시 실제 물리 충돌체로 작동한다.
      */
     getSolidObstacles() {
       return this._solidColliders;
     }
 
     /**
-     * 벽(Wall) 세그먼트만 별도로 반환 (시야 차폐 판정 등에 활용)
+     * 벽(Wall) 세그먼트 및 잠긴 출입문 목록 반환 (시야 차폐 판정 등에 활용)
      */
     getWalls() {
-      return this.walls;
+      return this._wallsAndLockedDoors;
+    }
+
+    /**
+     * 특정 방 ID로 방 데이터 조회
+     */
+    getRoomById(roomId) {
+      for (let i = 0; i < this.rooms.length; i++) {
+        if (this.rooms[i].id === roomId) {
+          return this.rooms[i];
+        }
+      }
+      return null;
+    }
+
+    /**
+     * 특정 방에 연결된 모든 출입문(Door) 목록 반환
+     */
+    getDoorsForRoom(roomId) {
+      return this.doors.filter((door) => door.roomId === roomId);
+    }
+
+    /**
+     * 특정 방의 모든 출입문 잠금/해제 상태를 변경하고 실제 충돌 데이터를 즉시 갱신
+     */
+    setRoomDoorsLocked(roomId, locked) {
+      const shouldLock = Boolean(locked);
+      let changed = false;
+
+      for (let i = 0; i < this.doors.length; i++) {
+        const door = this.doors[i];
+        if (door.roomId !== roomId) {
+          continue;
+        }
+        if (door.locked !== shouldLock || door.passable === shouldLock) {
+          door.locked = shouldLock;
+          door.passable = !shouldLock;
+          door.solid = shouldLock;
+          changed = true;
+        }
+      }
+
+      if (changed) {
+        this._rebuildSolidColliders();
+      }
+      return changed;
+    }
+
+    /**
+     * 맵 내 모든 출입문의 잠금을 해제하고 실제 충돌 데이터를 초기화
+     */
+    unlockAllDoors() {
+      let changed = false;
+      for (let i = 0; i < this.doors.length; i++) {
+        const door = this.doors[i];
+        if (door.locked || !door.passable) {
+          door.locked = false;
+          door.passable = true;
+          door.solid = false;
+          changed = true;
+        }
+      }
+      if (changed) {
+        this._rebuildSolidColliders();
+      }
     }
 
     /**
@@ -962,6 +1062,7 @@
   }
 
   PO.ROOM_TYPES = ROOM_TYPES;
+  PO.ROOM_STATES = ROOM_STATES;
   PO.FIXED_OFFICE_LAYOUT = FIXED_OFFICE_LAYOUT;
   PO.OfficeMap = OfficeMap;
 })(window);
