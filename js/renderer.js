@@ -253,6 +253,20 @@
             data: enemy
           });
         }
+
+        // Phase 14: 원거리 적(서류 투척자) 서류 투사체 깊이 정렬 렌더링
+        if (Array.isArray(enemySystem.enemyProjectiles)) {
+          for (let i = 0; i < enemySystem.enemyProjectiles.length; i++) {
+            const proj = enemySystem.enemyProjectiles[i];
+            if (proj.alive) {
+              renderQueue.push({
+                kind: 'enemy_projectile',
+                sortY: proj.y,
+                data: proj
+              });
+            }
+          }
+        }
       }
 
       if (boss && (boss.alive || boss.deathTimer > 0)) {
@@ -310,6 +324,9 @@
             break;
           case 'enemy':
             this._drawEnemy(ctx, item.data);
+            break;
+          case 'enemy_projectile':
+            this._drawEnemyProjectile(ctx, item.data);
             break;
           case 'projectile':
             this._drawProjectile(ctx, item.data);
@@ -1025,33 +1042,66 @@
         ctx.stroke();
         ctx.setLineDash([]);
 
-        // 적 근접 공격 준비(Windup 0.35s) 중 바닥 공격 방향·사거리(45px) 예고 부채꼴 표시
+        // 적 공격 준비(Windup) 중 바닥 공격 예고 텔레그래프 표시
         if (enemy.state === 'Attack' && enemy.attack && enemy.attack.phase === 'windup') {
           const windupTotal = Math.max(0.01, enemy.attack.windupDuration);
           const progress = Math.max(0, Math.min(1, 1 - enemy.attack.timer / windupTotal));
-          const halfArc = enemy.attackArcRad * 0.5;
-          const startAng = enemy.attack.aimAngle - halfArc;
-          const endAng = enemy.attack.aimAngle + halfArc;
-          const range = enemy.attackRange;
 
-          // 외곽 최대 사거리 영역 테두리
-          ctx.beginPath();
-          ctx.moveTo(enemy.position.x, enemy.position.y);
-          ctx.arc(enemy.position.x, enemy.position.y, range, startAng, endAng);
-          ctx.closePath();
-          ctx.fillStyle = 'rgba(244, 63, 94, 0.16)';
-          ctx.fill();
-          ctx.strokeStyle = 'rgba(251, 113, 133, 0.72)';
-          ctx.lineWidth = 1.8;
-          ctx.stroke();
+          if (enemy.attackType === 'ranged') {
+            // 원거리 적(서류 투척자) 투척 조준 궤적 레이저 라인 텔레그래프
+            const range = enemy.attackRange;
+            const aimAng = enemy.attack.aimAngle;
+            const targetX = enemy.position.x + Math.cos(aimAng) * range;
+            const targetY = enemy.position.y + Math.sin(aimAng) * range;
 
-          // 준비 진행률에 따라 차오르는 내부 경고 채움
-          ctx.beginPath();
-          ctx.moveTo(enemy.position.x, enemy.position.y);
-          ctx.arc(enemy.position.x, enemy.position.y, range * progress, startAng, endAng);
-          ctx.closePath();
-          ctx.fillStyle = `rgba(239, 68, 68, ${(0.25 + progress * 0.32).toFixed(3)})`;
-          ctx.fill();
+            ctx.save();
+            ctx.strokeStyle = `rgba(251, 146, 60, ${(0.45 + progress * 0.45).toFixed(2)})`;
+            ctx.lineWidth = 2.4;
+            ctx.setLineDash([8, 5]);
+            ctx.beginPath();
+            ctx.moveTo(enemy.position.x, enemy.position.y);
+            ctx.lineTo(targetX, targetY);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // 충전 진행 조준 링
+            ctx.fillStyle = `rgba(239, 68, 68, ${(0.35 + progress * 0.5).toFixed(2)})`;
+            ctx.beginPath();
+            ctx.arc(
+              enemy.position.x + Math.cos(aimAng) * range * progress,
+              enemy.position.y + Math.sin(aimAng) * range * progress,
+              4 + progress * 3,
+              0,
+              Math.PI * 2
+            );
+            ctx.fill();
+            ctx.restore();
+          } else {
+            // 근접 적 부채꼴 방향·사거리 예고 표시
+            const halfArc = enemy.attackArcRad * 0.5;
+            const startAng = enemy.attack.aimAngle - halfArc;
+            const endAng = enemy.attack.aimAngle + halfArc;
+            const range = enemy.attackRange;
+
+            // 외곽 최대 사거리 영역 테두리
+            ctx.beginPath();
+            ctx.moveTo(enemy.position.x, enemy.position.y);
+            ctx.arc(enemy.position.x, enemy.position.y, range, startAng, endAng);
+            ctx.closePath();
+            ctx.fillStyle = 'rgba(244, 63, 94, 0.16)';
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(251, 113, 133, 0.72)';
+            ctx.lineWidth = 1.8;
+            ctx.stroke();
+
+            // 준비 진행률에 따라 차오르는 내부 경고 채움
+            ctx.beginPath();
+            ctx.moveTo(enemy.position.x, enemy.position.y);
+            ctx.arc(enemy.position.x, enemy.position.y, range * progress, startAng, endAng);
+            ctx.closePath();
+            ctx.fillStyle = `rgba(239, 68, 68, ${(0.25 + progress * 0.32).toFixed(3)})`;
+            ctx.fill();
+          }
         }
 
         // 플레이어가 감지 범위를 벗어난 직후 마지막 발견 위치를 추적 중일 때 목표 지점 표시
@@ -1150,12 +1200,24 @@
         const aliveEnemies = enemySystem.getAliveEnemies();
         for (let i = 0; i < aliveEnemies.length; i++) {
           const enemy = aliveEnemies[i];
+          const shadowR = enemy.enemyType === 'cabinet' ? 24 : enemy.enemyType === 'stalker' ? 15 : enemy.colliderRadius || 17;
           ctx.save();
           ctx.fillStyle = 'rgba(24, 12, 42, 0.58)';
           ctx.beginPath();
-          ctx.ellipse(enemy.position.x, enemy.position.y + 3, 19, 10.5, 0, 0, Math.PI * 2);
+          ctx.ellipse(enemy.position.x, enemy.position.y + 3, shadowR * 1.1, shadowR * 0.6, 0, 0, Math.PI * 2);
           ctx.fill();
           ctx.restore();
+        }
+
+        // Phase 14: 서류 투사체 바닥 그림자
+        if (Array.isArray(enemySystem.enemyProjectiles)) {
+          for (let i = 0; i < enemySystem.enemyProjectiles.length; i++) {
+            const proj = enemySystem.enemyProjectiles[i];
+            if (!proj.alive) continue;
+            ctx.beginPath();
+            ctx.ellipse(proj.x, proj.y + 3, 6, 3.5, 0, 0, Math.PI * 2);
+            ctx.fill();
+          }
         }
       }
 
@@ -1778,15 +1840,19 @@
     }
 
     /**
-     * 카툰풍 괴이 야근 사원(기본 적) 렌더링 (테스트 타깃 및 플레이어와 구분되는 도형 그래픽)
-     * - 생존 시: 부유/보행 모션, 상태별 안광 색상, 피격 점멸, 머리 위 체력 바 및 상태 표시
-     * - 사망(Dead) 시: 보랏빛 영체 붕괴 애니메이션 재생 후 제거
+     * Phase 14: 카툰풍 괴이 적 렌더링 (5종 적별 외형·실루엣·장식·체력바 차별화)
+     * - ghost (사무실 망령): 보랏빛 반투명 직장인 망령
+     * - stalker (야근 추적자): 날렵한 적색 실루엣과 날카로운 손톱
+     * - thrower (서류 투척자): 청록 셔츠와 결재 서류 뭉치 무장
+     * - cabinet (철제 캐비닛): 육중한 2.5D 메탈 캐비닛 괴이
+     * - manager (야근 팀장): 짙은 네이비 정장, 골드 넥타이, 엘리트 오라
      */
     _drawEnemy(ctx, enemy) {
       const ex = enemy.position.x;
       const ey = enemy.position.y;
+      const type = enemy.enemyType || 'ghost';
 
-      // 사망(Dead) 상태: 간단한 소멸 애니메이션 렌더링 (체력 바 미표시)
+      // 사망(Dead) 상태: 소멸 애니메이션 렌더링 (체력 바 미표시)
       if (enemy.state === 'Dead' || !enemy.alive) {
         const p = Math.max(0, Math.min(1, enemy.deathTimer / Math.max(0.01, enemy.deathDuration)));
         const fade = 1 - p;
@@ -1796,8 +1862,8 @@
         ctx.globalAlpha = fade;
 
         // 바닥으로 꺼지는 어두운 영체 소용돌이 원
-        ctx.strokeStyle = '#c084fc';
-        ctx.fillStyle = 'rgba(88, 28, 135, 0.45)';
+        ctx.strokeStyle = type === 'cabinet' ? '#94a3b8' : type === 'stalker' ? '#f43f5e' : '#c084fc';
+        ctx.fillStyle = type === 'stalker' ? 'rgba(159, 18, 57, 0.45)' : 'rgba(88, 28, 135, 0.45)';
         ctx.lineWidth = 2.4;
         ctx.beginPath();
         ctx.ellipse(0, -4, 18 + p * 18, 9 + p * 8, 0, 0, Math.PI * 2);
@@ -1805,7 +1871,7 @@
         ctx.stroke();
 
         // 사방으로 흩어지는 괴이 입자 도형
-        ctx.fillStyle = '#e879f9';
+        ctx.fillStyle = type === 'manager' ? '#facc15' : type === 'stalker' ? '#fb7185' : '#e879f9';
         for (let k = 0; k < 6; k++) {
           const ang = (k / 6) * Math.PI * 2 + p * 1.4;
           const dist = 10 + p * 28;
@@ -1835,7 +1901,7 @@
       const facingBack = dirY < -0.55;
 
       const bob = enemy.isMoving
-        ? Math.abs(Math.sin(enemy.walkPhase)) * 3.2
+        ? Math.abs(Math.sin(enemy.walkPhase)) * (type === 'stalker' ? 4.2 : type === 'cabinet' ? 1.5 : 3.2)
         : Math.sin(performance.now() * 0.004) * 1.6;
       const wobbleX =
         enemy.shakeTimer > 0
@@ -1846,7 +1912,9 @@
 
       // 공격 타격 직후 짧은 전진 반동 오프셋
       const lungeOffset =
-        isAttacking && enemy.attack && enemy.attack.phase === 'recovery' ? 5 : 0;
+        isAttacking && enemy.attack && enemy.attack.phase === 'recovery'
+          ? (type === 'cabinet' ? 8 : 5)
+          : 0;
 
       ctx.save();
       ctx.translate(
@@ -1854,12 +1922,145 @@
         ey + dirY * lungeOffset * 0.65
       );
 
-      // 공격 준비(Windup) 중 몸체가 부풀어 오르는 크기 변화 표현
+      // 공격 준비(Windup) 중 몸체 부풀림 / 팽창 효과
       if (isWindup) {
         ctx.scale(1 + windupProgress * 0.14, 1 - windupProgress * 0.08);
       }
 
-      // 1. 괴이 오라(Aura) 후광 (공격 준비 시 강렬한 주홍빛 경계 오라)
+      // =======================================================================
+      // 적 종류별 고유 그래픽 렌더링 분기
+      // =======================================================================
+      if (type === 'cabinet') {
+        this._drawCabinetEnemyBody(ctx, enemy, {
+          bob,
+          isFlashing,
+          isWindup,
+          windupProgress,
+          isChasing,
+          dirX,
+          dirY
+        });
+      } else if (type === 'stalker') {
+        this._drawStalkerEnemyBody(ctx, enemy, {
+          bob,
+          isFlashing,
+          isWindup,
+          windupProgress,
+          isChasing,
+          dirX,
+          dirY,
+          facingBack
+        });
+      } else if (type === 'thrower') {
+        this._drawThrowerEnemyBody(ctx, enemy, {
+          bob,
+          isFlashing,
+          isWindup,
+          windupProgress,
+          isChasing,
+          dirX,
+          dirY,
+          facingBack
+        });
+      } else if (type === 'manager') {
+        this._drawManagerEnemyBody(ctx, enemy, {
+          bob,
+          isFlashing,
+          isWindup,
+          windupProgress,
+          isChasing,
+          dirX,
+          dirY,
+          facingBack
+        });
+      } else {
+        this._drawGhostEnemyBody(ctx, enemy, {
+          bob,
+          isFlashing,
+          isWindup,
+          windupProgress,
+          isChasing,
+          dirX,
+          dirY,
+          facingBack
+        });
+      }
+
+      // =======================================================================
+      // 머리 위 체력 바 및 상태 라벨 표시 (모든 적 공통 + 엘리트/탱커 차별화)
+      // =======================================================================
+      const barW = type === 'cabinet' ? 56 : type === 'manager' ? 52 : type === 'stalker' ? 40 : 44;
+      const barH = 6.5;
+      const barX = -barW * 0.5;
+      const barY = (type === 'cabinet' ? -68 : type === 'manager' ? -80 : -75) - bob * 0.35;
+      const hpRatio = Math.max(0, Math.min(1, enemy.hp / enemy.maxHp));
+
+      // 체력 바 배경 (엘리트는 금색 테두리)
+      const barBorder = type === 'manager' ? '#facc15' : OUTLINE_COLOR;
+      this._fillStrokeRoundRect(ctx, barX, barY, barW, barH, 3, '#0f172a', barBorder, type === 'manager' ? 2.2 : 1.8);
+      if (hpRatio > 0) {
+        ctx.fillStyle =
+          type === 'manager'
+            ? '#eab308'
+            : isChasing
+              ? '#e11d48'
+              : type === 'cabinet'
+                ? '#38bdf8'
+                : '#a855f7';
+        ctx.fillRect(barX + 1.5, barY + 1.5, (barW - 3) * hpRatio, barH - 3);
+      }
+
+      // 상태 및 이름 뱃지
+      const stateBadge = isAttacking
+        ? isWindup
+          ? '공격 준비!'
+          : '공격!'
+        : enemy.state === 'Chase'
+          ? enemy.isPlayerInRange
+            ? '추적!'
+            : '수색?'
+          : enemy.state === 'Patrol'
+            ? '순찰'
+            : '대기';
+
+      const enemyName = enemy.name || '적';
+      const elitePrefix = enemy.isElite ? '★ ' : '';
+      const eliteSuffix = enemy.isElite ? ' ★' : '';
+      const topLabel = `${elitePrefix}${enemyName} [${stateBadge}] · ${enemy.hp}${eliteSuffix}`;
+
+      ctx.font = 'bold 9.5px "Malgun Gothic", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.strokeStyle = OUTLINE_COLOR;
+      ctx.lineWidth = 2.8;
+      ctx.strokeText(topLabel, 0, barY - 3.5);
+      ctx.fillStyle =
+        type === 'manager'
+          ? '#fef08a'
+          : isWindup
+            ? '#fde047'
+            : isChasing
+              ? '#fda4af'
+              : '#e9d5ff';
+      ctx.fillText(topLabel, 0, barY - 3.5);
+
+      // 플레이어 감지 직후 느낌표(!) 팝업
+      if (enemy.alertTimer > 0) {
+        ctx.font = '900 15px "Malgun Gothic", sans-serif';
+        ctx.strokeStyle = OUTLINE_COLOR;
+        ctx.lineWidth = 3.5;
+        ctx.strokeText('!', 0, barY - 16);
+        ctx.fillStyle = type === 'stalker' ? '#ef4444' : '#fde047';
+        ctx.fillText('!', 0, barY - 16);
+      }
+
+      ctx.restore();
+    }
+
+    /**
+     * 1. 사무실 망령 (ghost) 본체 그래픽
+     */
+    _drawGhostEnemyBody(ctx, enemy, { bob, isFlashing, isWindup, windupProgress, isChasing, dirX, dirY, facingBack }) {
+      // 괴이 오라
       ctx.fillStyle = isWindup
         ? `rgba(249, 115, 22, ${(0.22 + windupProgress * 0.25).toFixed(3)})`
         : isChasing
@@ -1869,14 +2070,8 @@
       ctx.ellipse(0, -25 - bob, 21 + windupProgress * 4, 27 + windupProgress * 3, 0, 0, Math.PI * 2);
       ctx.fill();
 
-      // 2. 하단 그림자 촉수/해진 정장 자락
-      const coatFill = isFlashing
-        ? '#ffffff'
-        : isWindup
-          ? '#991b1b'
-          : isChasing
-            ? '#3b0764'
-            : '#2e1065';
+      // 해진 정장 하단 자락
+      const coatFill = isFlashing ? '#ffffff' : isWindup ? '#991b1b' : isChasing ? '#3b0764' : '#2e1065';
       const sleeveFill = isFlashing ? '#fecdd3' : isWindup ? '#dc2626' : '#4c1d95';
       const sway = enemy.isMoving ? Math.sin(enemy.walkPhase) * 3 : 0;
 
@@ -1895,11 +2090,10 @@
       ctx.fill();
       ctx.stroke();
 
-      // 3. 구부정한 괴이 사원 상체 코트
+      // 구부정한 상체 코트
       const bodyTop = -34 - bob;
       this._fillStrokeRoundRect(ctx, -14, bodyTop, 28, 25, 7, coatFill, OUTLINE_COLOR, 2.5);
 
-      // 삐뚤어진 붉은 사원 넥타이 & 오염된 명찰
       if (!facingBack) {
         const tieX = dirX * 4;
         ctx.fillStyle = isFlashing ? '#fda4af' : '#fb7185';
@@ -1918,32 +2112,12 @@
         ctx.fillRect(tieX - 9, bodyTop + 6, 5, 4);
       }
 
-      // 4. 앞으로 뻗은 괴이 양팔 (공격 준비 중 치켜드는 동작)
+      // 양팔
       const armReachY = isWindup ? -6 - windupProgress * 4 : isChasing ? -2.5 : 0;
-      this._fillStrokeRoundRect(
-        ctx,
-        -18 + dirX * 2,
-        bodyTop + 3 + armReachY - sway * 0.4,
-        6.5,
-        14,
-        3,
-        sleeveFill,
-        OUTLINE_COLOR,
-        2.2
-      );
-      this._fillStrokeRoundRect(
-        ctx,
-        11.5 + dirX * 2,
-        bodyTop + 3 + armReachY + sway * 0.4,
-        6.5,
-        14,
-        3,
-        sleeveFill,
-        OUTLINE_COLOR,
-        2.2
-      );
+      this._fillStrokeRoundRect(ctx, -18 + dirX * 2, bodyTop + 3 + armReachY - sway * 0.4, 6.5, 14, 3, sleeveFill, OUTLINE_COLOR, 2.2);
+      this._fillStrokeRoundRect(ctx, 11.5 + dirX * 2, bodyTop + 3 + armReachY + sway * 0.4, 6.5, 14, 3, sleeveFill, OUTLINE_COLOR, 2.2);
 
-      // 5. 창백한 괴이 헤드 & 뿔 모양 그림자 머리카락
+      // 헤드 & 뿔
       const headY = -46 - bob;
       const headR = 13.5;
       ctx.fillStyle = isFlashing ? '#ffffff' : '#ddd6fe';
@@ -1954,7 +2128,6 @@
       ctx.fill();
       ctx.stroke();
 
-      // 삐죽 솟은 어두운 괴이 뿔/머리카락 장식
       ctx.fillStyle = '#1e1b4b';
       ctx.beginPath();
       ctx.moveTo(-12, headY - 4);
@@ -1968,7 +2141,6 @@
       ctx.fill();
       ctx.stroke();
 
-      // 번뜩이는 안광 (추적 시 붉은 안광, 대기/순찰 시 노란 안광)
       if (!facingBack) {
         const eyeShiftX = dirX * 4.4;
         const eyeShiftY = Math.max(-1.5, dirY * 2.0);
@@ -1987,51 +2159,361 @@
         ctx.arc(4.6 + eyeShiftX, eyeY, 1.9, 0, Math.PI * 2);
         ctx.fill();
       }
+    }
 
-      // 6. 머리 위 적 체력 바 및 상태 표시
-      const barW = 44;
-      const barH = 6.5;
-      const barX = -barW * 0.5;
-      const barY = -75 - bob * 0.35;
-      const hpRatio = Math.max(0, Math.min(1, enemy.hp / enemy.maxHp));
+    /**
+     * 2. 야근 추적자 (stalker) 본체 그래픽 - 날렵하고 날카로운 핏빛 암살자 실루엣
+     */
+    _drawStalkerEnemyBody(ctx, enemy, { bob, isFlashing, isWindup, windupProgress, isChasing, dirX, dirY, facingBack }) {
+      // 붉은 스피드 오라
+      ctx.fillStyle = isWindup
+        ? `rgba(239, 68, 68, ${(0.3 + windupProgress * 0.35).toFixed(3)})`
+        : 'rgba(225, 29, 72, 0.22)';
+      ctx.beginPath();
+      ctx.ellipse(0, -22 - bob, 16 + windupProgress * 3, 24 + windupProgress * 2, 0, 0, Math.PI * 2);
+      ctx.fill();
 
-      this._fillStrokeRoundRect(ctx, barX, barY, barW, barH, 3, '#0f172a', OUTLINE_COLOR, 1.8);
-      if (hpRatio > 0) {
-        ctx.fillStyle = isChasing ? '#e11d48' : '#a855f7';
-        ctx.fillRect(barX + 1.5, barY + 1.5, (barW - 3) * hpRatio, barH - 3);
-      }
+      const coatFill = isFlashing ? '#ffffff' : isWindup ? '#b91c1c' : '#7f1d1d';
+      const armFill = isFlashing ? '#fecdd3' : '#991b1b';
+      const sway = enemy.isMoving ? Math.sin(enemy.walkPhase * 1.3) * 4 : 0;
 
-      // 체력 수치 및 AI 상태 텍스트 (대기 / 순찰 / 추적 / 공격 준비)
-      const stateBadge = isAttacking
-        ? isWindup
-          ? '공격 준비!'
-          : '공격!'
-        : enemy.state === 'Chase'
-          ? enemy.isPlayerInRange
-            ? '추적!'
-            : '수색?'
-          : enemy.state === 'Patrol'
-            ? '순찰'
-            : '대기';
-      const topLabel = `${stateBadge} · ${enemy.hp}`;
+      // 하단 빠른 발걸음 실루엣
+      ctx.fillStyle = '#450a0a';
+      ctx.beginPath();
+      ctx.moveTo(-9, -10 - bob);
+      ctx.lineTo(-12 + sway, 0);
+      ctx.lineTo(0, -5);
+      ctx.lineTo(12 - sway, 0);
+      ctx.lineTo(9, -10 - bob);
+      ctx.closePath();
+      ctx.fill();
 
-      ctx.font = 'bold 10px "Malgun Gothic", sans-serif';
-      ctx.textAlign = 'center';
+      // 날렵하고 좁은 상체 코트
+      const bodyTop = -32 - bob;
+      this._fillStrokeRoundRect(ctx, -10, bodyTop, 20, 24, 5, coatFill, OUTLINE_COLOR, 2.2);
+
+      // 날카로운 긴 손톱/칼날 팔 (공격 시 전방으로 뻗침)
+      const reach = isWindup ? -8 - windupProgress * 6 : isChasing ? 4 : 0;
+      this._fillStrokeRoundRect(ctx, -15 + dirX * reach, bodyTop + 4, 5, 15, 2, armFill, OUTLINE_COLOR, 2);
+      this._fillStrokeRoundRect(ctx, 10 + dirX * reach, bodyTop + 4, 5, 15, 2, armFill, OUTLINE_COLOR, 2);
+
+      // 칼날 손가락 포인트
+      ctx.fillStyle = '#fca5a5';
+      ctx.fillRect(-16 + dirX * reach, bodyTop + 16, 3, 5);
+      ctx.fillRect(13 + dirX * reach, bodyTop + 16, 3, 5);
+
+      // 뾰족한 헤드 실루엣
+      const headY = -43 - bob;
+      ctx.fillStyle = isFlashing ? '#ffffff' : '#fecdd3';
       ctx.strokeStyle = OUTLINE_COLOR;
-      ctx.lineWidth = 2.8;
-      ctx.strokeText(topLabel, 0, barY - 3.5);
-      ctx.fillStyle = isWindup ? '#fde047' : isChasing ? '#fda4af' : '#e9d5ff';
-      ctx.fillText(topLabel, 0, barY - 3.5);
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.ellipse(0, headY, 10, 11, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
 
-      // 플레이어 최초 감지 직후 짧은 느낌표(!) 팝업 강조
-      if (enemy.alertTimer > 0) {
-        ctx.font = '900 15px "Malgun Gothic", sans-serif';
-        ctx.strokeStyle = OUTLINE_COLOR;
-        ctx.lineWidth = 3.5;
-        ctx.strokeText('!', 0, barY - 16);
-        ctx.fillStyle = '#fde047';
-        ctx.fillText('!', 0, barY - 16);
+      // 뒤로 뻗은 뾰족한 헤어/가시
+      ctx.fillStyle = '#450a0a';
+      ctx.beginPath();
+      ctx.moveTo(-8, headY - 3);
+      ctx.lineTo(-14, headY - 14);
+      ctx.lineTo(0, headY - 10);
+      ctx.lineTo(14, headY - 14);
+      ctx.lineTo(8, headY - 3);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // 날카로운 황색/주홍빛 맹수 안광
+      if (!facingBack) {
+        const eyeY = headY + dirY * 1.5;
+        const eyeShiftX = dirX * 3.5;
+        ctx.fillStyle = '#f59e0b';
+        ctx.beginPath();
+        ctx.arc(-3.5 + eyeShiftX, eyeY, 1.8, 0, Math.PI * 2);
+        ctx.arc(3.5 + eyeShiftX, eyeY, 1.8, 0, Math.PI * 2);
+        ctx.fill();
       }
+    }
+
+    /**
+     * 3. 서류 투척자 (thrower) 본체 그래픽 - 청록색 셔츠 + 결재 서류 뭉치 투척 모션
+     */
+    _drawThrowerEnemyBody(ctx, enemy, { bob, isFlashing, isWindup, windupProgress, isChasing, dirX, dirY, facingBack }) {
+      // 투척자 은은한 오렌지/시안 오라
+      ctx.fillStyle = isWindup
+        ? `rgba(249, 115, 22, ${(0.25 + windupProgress * 0.3).toFixed(3)})`
+        : 'rgba(20, 184, 166, 0.16)';
+      ctx.beginPath();
+      ctx.ellipse(0, -24 - bob, 20 + windupProgress * 3, 26 + windupProgress * 2, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      const shirtFill = isFlashing ? '#ffffff' : isWindup ? '#c2410c' : '#0f766e';
+      const bodyTop = -33 - bob;
+
+      // 하단 바지
+      this._fillStrokeRoundRect(ctx, -10, -12 - bob, 20, 14, 4, '#1e293b', OUTLINE_COLOR, 2);
+
+      // 청록색 셔츠 상체
+      this._fillStrokeRoundRect(ctx, -13, bodyTop, 26, 24, 6, shirtFill, OUTLINE_COLOR, 2.3);
+
+      // 노란 사원증 목걸이
+      if (!facingBack) {
+        ctx.strokeStyle = '#facc15';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(-4, bodyTop + 1);
+        ctx.lineTo(0, bodyTop + 11);
+        ctx.lineTo(4, bodyTop + 1);
+        ctx.stroke();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(-3, bodyTop + 11, 6, 5);
+      }
+
+      // 왼손 & 오른손(결재 서류 뭉치 들고 있음)
+      const armFill = isFlashing ? '#ccfbf1' : '#115e59';
+      this._fillStrokeRoundRect(ctx, -17, bodyTop + 4, 5.5, 13, 2.5, armFill, OUTLINE_COLOR, 2);
+
+      // 서류철 투척 모션 (Windup 중 뒤로 젖혔다가 앞으로 전진)
+      const throwArmAngle = isWindup ? -0.8 + windupProgress * 1.6 : 0.2;
+      ctx.save();
+      ctx.translate(12, bodyTop + 6);
+      ctx.rotate(throwArmAngle);
+      this._fillStrokeRoundRect(ctx, -2, 0, 5.5, 12, 2.5, armFill, OUTLINE_COLOR, 2);
+
+      // 한 손에 든 두꺼운 결재 서류 뭉치
+      this._fillStrokeRoundRect(ctx, -4, 9, 13, 10, 2, '#ffffff', OUTLINE_COLOR, 1.8);
+      ctx.fillStyle = '#ef4444';
+      ctx.fillRect(-1, 11, 7, 2);
+      ctx.restore();
+
+      // 창백한 헤드 및 지적인 뿔테 안경
+      const headY = -45 - bob;
+      ctx.fillStyle = isFlashing ? '#ffffff' : '#ccfbf1';
+      ctx.strokeStyle = OUTLINE_COLOR;
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      ctx.arc(0, headY, 12.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      // 단정한 흑발 헤어
+      ctx.fillStyle = '#0f172a';
+      ctx.beginPath();
+      ctx.arc(0, headY - 2, 12.5, Math.PI * 0.9, Math.PI * 2.1);
+      ctx.closePath();
+      ctx.fill();
+
+      if (!facingBack) {
+        const eyeY = headY + 1.5 + dirY * 1.5;
+        const eyeX = dirX * 3.5;
+
+        // 사각 뿔테 안경
+        ctx.strokeStyle = '#0284c7';
+        ctx.lineWidth = 1.6;
+        ctx.strokeRect(-6.5 + eyeX, eyeY - 2.5, 5, 5);
+        ctx.strokeRect(1.5 + eyeX, eyeY - 2.5, 5, 5);
+        ctx.beginPath();
+        ctx.moveTo(-1.5 + eyeX, eyeY);
+        ctx.lineTo(1.5 + eyeX, eyeY);
+        ctx.stroke();
+
+        ctx.fillStyle = '#fde047';
+        ctx.fillRect(-4.5 + eyeX, eyeY - 1, 2, 2);
+        ctx.fillRect(3.5 + eyeX, eyeY - 1, 2, 2);
+      }
+    }
+
+    /**
+     * 4. 철제 캐비닛 (cabinet) 본체 그래픽 - 육중한 2.5D 메탈 캐비닛 괴이
+     */
+    _drawCabinetEnemyBody(ctx, enemy, { bob, isFlashing, isWindup, windupProgress, isChasing, dirX }) {
+      // 쿵쾅거리는 묵직한 지진파 바닥 오라
+      ctx.fillStyle = isWindup
+        ? `rgba(244, 63, 94, ${(0.28 + windupProgress * 0.35).toFixed(3)})`
+        : 'rgba(71, 85, 105, 0.25)';
+      ctx.beginPath();
+      ctx.ellipse(0, -18 - bob * 0.5, 26 + windupProgress * 5, 18, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 준비(Windup) 시 캐비닛이 뒤로 살짝 젖혀지며 서랍이 벌어짐
+      if (isWindup) {
+        ctx.rotate(dirX * -0.15 * windupProgress);
+      }
+
+      const bodyFill = isFlashing ? '#ffffff' : '#475569';
+      const sideFill = isFlashing ? '#e2e8f0' : '#334155';
+      const w = 34;
+      const h = 46;
+      const topY = -h - bob * 0.5;
+
+      // 2.5D 메탈 캐비닛 박스 몸통
+      this._fillStrokeRoundRect(ctx, -w * 0.5, topY, w, h, 4, bodyFill, OUTLINE_COLOR, 2.5);
+
+      // 3단 서랍 칸막이 선
+      ctx.strokeStyle = OUTLINE_COLOR;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(-w * 0.5 + 3, topY + h * 0.34);
+      ctx.lineTo(w * 0.5 - 3, topY + h * 0.34);
+      ctx.moveTo(-w * 0.5 + 3, topY + h * 0.67);
+      ctx.lineTo(w * 0.5 - 3, topY + h * 0.67);
+      ctx.stroke();
+
+      // 서랍 메탈 손잡이
+      ctx.fillStyle = '#cbd5e1';
+      for (let r = 0; r < 3; r++) {
+        const hy = topY + r * (h * 0.33) + 5;
+        this._fillStrokeRect(ctx, -7, hy, 14, 3.5, '#cbd5e1', OUTLINE_COLOR, 1.2);
+      }
+
+      // 서랍 틈새에서 번뜩이는 붉은/보랏빛 괴이 안광 눈 슬릿
+      const eyeDrawerY = topY + h * 0.34 + (isWindup ? 4 : 0);
+      ctx.fillStyle = '#ef4444';
+      ctx.fillRect(-9 + dirX * 3, eyeDrawerY - 2, 6, 3);
+      ctx.fillRect(3 + dirX * 3, eyeDrawerY - 2, 6, 3);
+
+      // 윗단 서랍 라벨 명찰
+      this._fillStrokeRect(ctx, 4, topY + 4, 9, 6, '#fef08a', OUTLINE_COLOR, 1);
+    }
+
+    /**
+     * 5. 야근 팀장 (manager) 본체 그래픽 - 엘리트 전용 네이비 정장, 골드 넥타이 및 엘리트 뱃지
+     */
+    _drawManagerEnemyBody(ctx, enemy, { bob, isFlashing, isWindup, windupProgress, isChasing, dirX, dirY, facingBack }) {
+      // 찬란한 엘리트 골드/퍼플 오라
+      const auraPulse = Math.sin(performance.now() * 0.006) * 0.08;
+      ctx.fillStyle = isWindup
+        ? `rgba(234, 179, 8, ${(0.32 + windupProgress * 0.35).toFixed(3)})`
+        : `rgba(234, 179, 8, ${(0.18 + auraPulse).toFixed(3)})`;
+      ctx.beginPath();
+      ctx.ellipse(0, -28 - bob, 26 + windupProgress * 4, 32 + windupProgress * 3, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 위엄 있는 넓은 네이비 더블버튼 정장 코트
+      const suitFill = isFlashing ? '#ffffff' : isWindup ? '#7c2d12' : '#172554';
+      const lapelFill = isFlashing ? '#fed7aa' : '#1e3a8a';
+      const bodyTop = -38 - bob;
+
+      // 하단 슬랙스 바지
+      this._fillStrokeRoundRect(ctx, -14, -14 - bob, 28, 16, 4, '#0f172a', OUTLINE_COLOR, 2.2);
+
+      // 넓은 더블 브레스티드 정장 몸통
+      this._fillStrokeRoundRect(ctx, -17, bodyTop, 34, 28, 7, suitFill, OUTLINE_COLOR, 2.6);
+
+      // 황금색 럭셔리 넥타이 & 셔츠 라펠
+      if (!facingBack) {
+        const tieX = dirX * 4;
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.moveTo(tieX - 6, bodyTop + 2);
+        ctx.lineTo(tieX + 6, bodyTop + 2);
+        ctx.lineTo(tieX, bodyTop + 14);
+        ctx.closePath();
+        ctx.fill();
+
+        // 번뜩이는 골드 넥타이
+        ctx.fillStyle = '#facc15';
+        ctx.strokeStyle = '#a16207';
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(tieX - 2.5, bodyTop + 5);
+        ctx.lineTo(tieX + 2.5, bodyTop + 5);
+        ctx.lineTo(tieX + 3.5, bodyTop + 18);
+        ctx.lineTo(tieX, bodyTop + 23);
+        ctx.lineTo(tieX - 3.5, bodyTop + 18);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // 황금 사원증 & 행커치프
+        ctx.fillStyle = '#fde047';
+        ctx.fillRect(tieX - 13, bodyTop + 7, 5, 4);
+      }
+
+      // 묵직한 양팔 & 골드 손목시계
+      const armFill = isFlashing ? '#fed7aa' : lapelFill;
+      this._fillStrokeRoundRect(ctx, -21 + dirX * 2, bodyTop + 4, 7, 16, 3, armFill, OUTLINE_COLOR, 2.2);
+      this._fillStrokeRoundRect(ctx, 14 + dirX * 2, bodyTop + 4, 7, 16, 3, armFill, OUTLINE_COLOR, 2.2);
+      ctx.fillStyle = '#facc15';
+      ctx.fillRect(14 + dirX * 2, bodyTop + 16, 7, 2.5);
+
+      // 위압감 있는 팀장 헤드
+      const headY = -51 - bob;
+      ctx.fillStyle = isFlashing ? '#ffffff' : '#fef08a';
+      ctx.strokeStyle = OUTLINE_COLOR;
+      ctx.lineWidth = 2.6;
+      ctx.beginPath();
+      ctx.arc(0, headY, 14.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      // 올백 포마드 헤어
+      ctx.fillStyle = '#0f172a';
+      ctx.beginPath();
+      ctx.arc(0, headY - 3, 14.5, Math.PI * 1.0, Math.PI * 2.0);
+      ctx.closePath();
+      ctx.fill();
+
+      // 날카로운 금색 안광
+      if (!facingBack) {
+        const eyeY = headY + 1.5 + dirY * 2.0;
+        const eyeX = dirX * 4.5;
+        ctx.fillStyle = '#eab308';
+        ctx.beginPath();
+        ctx.arc(-4.5 + eyeX, eyeY, 2.4, 0, Math.PI * 2);
+        ctx.arc(4.5 + eyeX, eyeY, 2.4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // 머리 위 둥둥 뜨는 골드 엘리트 별 뱃지
+      const starY = headY - 22;
+      ctx.fillStyle = '#facc15';
+      ctx.strokeStyle = OUTLINE_COLOR;
+      ctx.lineWidth = 2;
+      ctx.font = '900 13px "Malgun Gothic", sans-serif';
+      ctx.strokeText('★', 0, starY);
+      ctx.fillText('★', 0, starY);
+    }
+
+    /**
+     * Phase 14: 원거리 적(서류 투척자) 서류 투사체 렌더링
+     */
+    _drawEnemyProjectile(ctx, proj) {
+      if (!proj.alive) return;
+      const visualY = proj.y - 18;
+      const prevVisualY = proj.prevY - 18;
+
+      ctx.save();
+
+      // 1. 날아가는 궤적 잔상
+      ctx.strokeStyle = 'rgba(251, 146, 60, 0.45)';
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(proj.prevX, prevVisualY);
+      ctx.lineTo(proj.x, visualY);
+      ctx.stroke();
+
+      // 뒤따라 흩날리는 낱장 서류 2장
+      const trail1X = proj.x - proj.dirX * 14 - proj.dirY * 5;
+      const trail1Y = visualY - proj.dirY * 14 + proj.dirX * 5;
+      this._fillStrokeRoundRect(ctx, trail1X - 4, trail1Y - 3, 8, 6, 1, '#f1f5f9', OUTLINE_COLOR, 1.2);
+
+      // 2. 주 결재 서류 뭉치 본체 (회전하며 비행)
+      ctx.translate(proj.x, visualY);
+      ctx.rotate(proj.angle + proj.spinPhase * 0.4);
+
+      // 결재 서류철 폴더
+      this._fillStrokeRoundRect(ctx, -8, -6, 16, 12, 2, '#ffffff', OUTLINE_COLOR, 2);
+
+      // 서류철 상단 붉은 '반려' 도장 마크
+      ctx.fillStyle = '#ef4444';
+      ctx.fillRect(-4, -4, 8, 3);
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillRect(-5, 0, 10, 1.8);
+      ctx.fillRect(-5, 3, 7, 1.8);
 
       ctx.restore();
     }

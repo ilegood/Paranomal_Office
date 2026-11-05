@@ -15,35 +15,239 @@
   });
 
   /**
-   * 기본 적 밸런스, AI 추적 및 근접 공격 설정값 (추후 조정 용이하도록 별도 상수 객체로 관리)
+   * Phase 14: 5종 적 데이터 정의 (적 데이터 구조와 AI 로직의 명확한 분리)
+   * 고유 ID, 이름, 최대 체력, 이동 속도, 공격력, 공격 범위, 공격 쿨다운, 공격 방식(melee/ranged), 처치 보상
+   */
+  const ENEMY_DEFINITIONS = Object.freeze({
+    ghost: {
+      type: 'ghost',
+      name: '사무실 망령',
+      maxHp: 100,
+      moveSpeed: 169, // 플레이어(260)의 65%
+      attackDamage: 15,
+      attackRange: 45,
+      attackCooldown: 1.2,
+      attackType: 'melee',
+      attackWindupDuration: 0.35,
+      attackRecoveryDuration: 0.16,
+      attackArcDegrees: 120,
+      reward: 10,
+      colliderRadius: 17,
+      chaseStopDistance: 38,
+      detectionRange: 250,
+      isElite: false,
+      description: '과중한 업무로 승천하지 못한 망령. 기본적인 플레이어 추적과 근접 공격을 가합니다.'
+    },
+    stalker: {
+      type: 'stalker',
+      name: '야근 추적자',
+      maxHp: 60, // 체력 낮음
+      moveSpeed: 240, // 매우 빠른 추적 (플레이어 260의 ~92%)
+      attackDamage: 12,
+      attackRange: 42,
+      attackCooldown: 0.9, // 빠른 공격 쿨다운
+      attackType: 'melee',
+      attackWindupDuration: 0.22, // 짧은 선딜레이
+      attackRecoveryDuration: 0.12,
+      attackArcDegrees: 110,
+      reward: 10,
+      colliderRadius: 15,
+      chaseStopDistance: 36,
+      detectionRange: 270,
+      isElite: false,
+      description: '퇴근하는 자를 용납하지 못하는 고속 추적자. 빠른 이동 속도로 접근해 찌릅니다.'
+    },
+    thrower: {
+      type: 'thrower',
+      name: '서류 투척자',
+      maxHp: 75,
+      moveSpeed: 150, // 플레이어(260)의 58%
+      attackDamage: 12,
+      attackRange: 240, // 원거리 조준 사거리
+      attackCooldown: 1.8,
+      attackType: 'ranged',
+      attackWindupDuration: 0.40, // 서류 장전 및 조준 선딜레이
+      attackRecoveryDuration: 0.20,
+      attackArcDegrees: 360,
+      reward: 15,
+      colliderRadius: 16,
+      chaseStopDistance: 170, // 정지 거리
+      preferredMinDistance: 150, // 이 거리보다 가까우면 뒤로 후퇴(kiting)
+      preferredMaxDistance: 230, // 이 거리보다 멀면 접근
+      projectileSpeed: 300, // 날아가는 서류 속도 (px/s)
+      projectileLifetime: 2.2, // 투사체 수명 (초)
+      projectileRadius: 8, // 투사체 피격 반경 (px)
+      detectionRange: 290,
+      isElite: false,
+      description: '플레이어와 일정 거리를 유지(카이팅)하며 날카로운 결재 서류 뭉치를 투척합니다.'
+    },
+    cabinet: {
+      type: 'cabinet',
+      name: '철제 캐비닛',
+      maxHp: 220, // 매우 높은 체력
+      moveSpeed: 105, // 느린 이동 (플레이어의 ~40%)
+      attackDamage: 28, // 묵직하고 강력한 일격
+      attackRange: 55, // 덩치에 걸맞은 넓은 사거리
+      attackCooldown: 2.0, // 느린 공격 주기
+      attackType: 'melee',
+      attackWindupDuration: 0.55, // 묵직한 선딜레이
+      attackRecoveryDuration: 0.30,
+      attackArcDegrees: 140, // 넓은 부채꼴 판정
+      reward: 20,
+      colliderRadius: 22, // 큰 충돌 크기
+      chaseStopDistance: 48,
+      detectionRange: 240,
+      isElite: false,
+      description: '육중한 철제 사무 캐비닛 괴이. 느리지만 강력한 체력과 무거운 타격을 자랑합니다.'
+    },
+    manager: {
+      type: 'manager',
+      name: '야근 팀장',
+      maxHp: 180, // 높은 체력
+      moveSpeed: 185, // 준수한 속도 (플레이어의 ~71%)
+      attackDamage: 22, // 높은 공격력
+      attackRange: 50,
+      attackCooldown: 1.4,
+      attackType: 'melee',
+      attackWindupDuration: 0.32,
+      attackRecoveryDuration: 0.18,
+      attackArcDegrees: 130,
+      reward: 30, // 높은 처치 보상
+      colliderRadius: 19,
+      chaseStopDistance: 42,
+      detectionRange: 280,
+      isElite: true,
+      description: '부하 직원들을 감시하는 엘리트 야근 팀장. 높은 체력과 공격력을 지닌 요주의 적입니다.'
+    }
+  });
+
+  /**
+   * 기본 적 밸런스, AI 추적 및 공격 공통 설정값
    */
   const ENEMY_CONFIG = {
-    maxHp: 100, // 적 기본 체력: 100
-    speedRatioToPlayer: 0.65, // 플레이어 일반 이동 속도(260) 대비 약 65%
-    moveSpeed: 169, // 기본 추적 이동 속도 (260 * 0.65 = 169 px/sec)
-    patrolSpeedRatio: 0.6, // 순찰 이동 시 속도 비율
-    detectionRange: 250, // 플레이어 감지 범위: 약 250px
-    colliderRadius: 17, // 바닥 원형 충돌 반경 (px)
-    chaseStopDistance: 38, // 플레이어와 겹침·떨림 방지 정지 거리 (사거리 45px 안쪽)
+    maxHp: 100,
+    speedRatioToPlayer: 0.65,
+    moveSpeed: 169,
+    patrolSpeedRatio: 0.6,
+    detectionRange: 250,
+    colliderRadius: 17,
+    chaseStopDistance: 38,
 
-    // Phase 5: 적 기본 근접 공격 설정값
-    attackRange: 45, // 공격 사거리: 약 45px
-    attackDamage: 15, // 공격 피해량: 15
-    attackCooldown: 1.2, // 공격 쿨다운: 1.2초
-    attackWindupDuration: 0.35, // 공격 준비 시간: 약 0.35초
-    attackRecoveryDuration: 0.16, // 공격 판정 직후 짧은 후딜레이 시간 (초)
-    attackArcDegrees: 120, // 공격 방향 부채꼴 각도 (도)
+    attackRange: 45,
+    attackDamage: 15,
+    attackCooldown: 1.2,
+    attackWindupDuration: 0.35,
+    attackRecoveryDuration: 0.16,
+    attackArcDegrees: 120,
 
-    lostSightChaseDuration: 2.0, // 감지 이탈 후 마지막 발견 위치 추적 유지 시간 (초)
-    arrivalThreshold: 8, // 목표 지점(순찰/마지막 발견 위치) 도착 판정 반경 (px)
-    patrolDistance: 56, // 제자리 주변 짧은 순찰 거리 (px)
-    idleDuration: 1.0, // 대기(Idle) 상태 유지 시간 (초)
-    maxPatrolDuration: 1.8, // 단일 순찰 구간 최대 이동 시간 (초)
-    hitFlashDuration: 0.14, // 피격 점멸 피드백 시간 (초)
-    hitShakeDuration: 0.18, // 피격 흔들림 피드백 시간 (초)
-    alertPopDuration: 0.45, // 플레이어 발견 시 느낌표(!) 표시 시간 (초)
-    deathDuration: 0.45 // 사망 연출 지속 시간 후 제거 (초)
+    lostSightChaseDuration: 2.0,
+    arrivalThreshold: 8,
+    patrolDistance: 56,
+    idleDuration: 1.0,
+    maxPatrolDuration: 1.8,
+    hitFlashDuration: 0.14,
+    hitShakeDuration: 0.18,
+    alertPopDuration: 0.45,
+    deathDuration: 0.45
   };
+
+  /**
+   * Phase 14: 원거리 적(서류 투척자) 발사체 엔티티 모델
+   */
+  class EnemyProjectile {
+    constructor(config = {}) {
+      this.id = config.id || `eproj-${Math.random().toString(36).slice(2, 9)}`;
+      this.x = config.x || 0;
+      this.y = config.y || 0;
+      this.prevX = this.x;
+      this.prevY = this.y;
+      this.dirX = config.dirX || 1;
+      this.dirY = config.dirY || 0;
+      this.speed = config.speed || 300;
+      this.damage = config.damage || 12;
+      this.radius = config.radius || 8;
+      this.lifeTime = config.lifeTime || 2.2;
+      this.elapsed = 0;
+      this.alive = true;
+      this.attackerId = config.attackerId || null;
+      this.angle = Math.atan2(this.dirY, this.dirX);
+      this.spinPhase = Math.random() * Math.PI * 2;
+    }
+
+    update(dt, player, officeMap, playerDamageSystem = null) {
+      if (!this.alive) return false;
+
+      this.prevX = this.x;
+      this.prevY = this.y;
+      this.elapsed += dt;
+      this.spinPhase += dt * 14;
+
+      if (this.elapsed >= this.lifeTime) {
+        this.alive = false;
+        return false;
+      }
+
+      this.x += this.dirX * this.speed * dt;
+      this.y += this.dirY * this.speed * dt;
+
+      // 1. 맵 외곽 및 벽 충돌 검사
+      if (officeMap) {
+        if (typeof officeMap.getPlayableBounds === 'function') {
+          const bounds = officeMap.getPlayableBounds(0);
+          if (
+            this.x < bounds.minX ||
+            this.x > bounds.maxX ||
+            this.y < bounds.minY ||
+            this.y > bounds.maxY
+          ) {
+            this.alive = false;
+            return false;
+          }
+        }
+
+        const walls =
+          typeof officeMap.getWalls === 'function'
+            ? officeMap.getWalls()
+            : officeMap.walls || [];
+        for (let i = 0; i < walls.length; i++) {
+          const w = walls[i];
+          if (
+            this.x >= w.x &&
+            this.x <= w.x + w.width &&
+            this.y >= w.y &&
+            this.y <= w.y + w.height
+          ) {
+            this.alive = false;
+            return false;
+          }
+        }
+      }
+
+      // 2. 플레이어 충돌 검사
+      if (player && !player.isDead && player.hp > 0) {
+        const dx = player.position.x - this.x;
+        const dy = player.position.y - this.y;
+        const hitDist = (player.colliderRadius || 16) + this.radius;
+        if (dx * dx + dy * dy <= hitDist * hitDist) {
+          this.alive = false;
+          if (playerDamageSystem) {
+            playerDamageSystem.applyDamage(player, this.damage, {
+              source: 'enemy_ranged',
+              attackerId: this.attackerId
+            });
+          } else {
+            player.takeDamage(this.damage, {
+              source: 'enemy_ranged',
+              attackerId: this.attackerId
+            });
+          }
+          return false;
+        }
+      }
+
+      return true;
+    }
+  }
 
   /**
    * 기본 적 엔티티 데이터 및 상태 모델 (플레이어 및 테스트 타깃과 분리)
@@ -54,6 +258,16 @@
       this.isEnemy = true;
       this.roomId = config.roomId ?? null;
 
+      // Phase 14: 적 종류(enemyType) 및 데이터 분리 정의 적용
+      this.enemyType = config.enemyType || 'ghost';
+      const def = ENEMY_DEFINITIONS[this.enemyType] || ENEMY_DEFINITIONS.ghost;
+
+      this.name = config.name ?? def.name;
+      this.enemyType = def.type;
+      this.attackType = config.attackType ?? def.attackType; // 'melee' | 'ranged'
+      this.reward = config.reward ?? def.reward;
+      this.isElite = Boolean(config.isElite ?? def.isElite);
+
       // 위치 (쿼터뷰 바닥 접지면 중심 좌표)
       this.position = {
         x: config.x ?? 1005,
@@ -61,24 +275,31 @@
       };
 
       // 체력 및 이동/감지/공격 수치
-      this.maxHp = config.maxHp ?? ENEMY_CONFIG.maxHp;
+      this.maxHp = config.maxHp ?? def.maxHp;
       this.hp = config.hp ?? this.maxHp;
       this.speed =
         config.speed ??
         (config.playerBaseSpeed
-          ? config.playerBaseSpeed * ENEMY_CONFIG.speedRatioToPlayer
-          : ENEMY_CONFIG.moveSpeed);
-      this.detectionRange = config.detectionRange ?? ENEMY_CONFIG.detectionRange;
+          ? config.playerBaseSpeed * (def.moveSpeed / 260)
+          : def.moveSpeed);
+      this.detectionRange = config.detectionRange ?? def.detectionRange;
 
       // 충돌 반경 및 정지 거리
-      this.colliderRadius = config.colliderRadius ?? ENEMY_CONFIG.colliderRadius;
+      this.colliderRadius = config.colliderRadius ?? def.colliderRadius;
       this.radius = this.colliderRadius;
-      this.chaseStopDistance = config.chaseStopDistance ?? ENEMY_CONFIG.chaseStopDistance;
+      this.chaseStopDistance = config.chaseStopDistance ?? def.chaseStopDistance;
 
-      // 근접 공격 속성
-      this.attackRange = config.attackRange ?? ENEMY_CONFIG.attackRange;
-      this.attackDamage = config.attackDamage ?? ENEMY_CONFIG.attackDamage;
-      const arcDeg = config.attackArcDegrees ?? ENEMY_CONFIG.attackArcDegrees;
+      // 원거리 카이팅 및 투사체 설정
+      this.preferredMinDistance = config.preferredMinDistance ?? def.preferredMinDistance ?? 150;
+      this.preferredMaxDistance = config.preferredMaxDistance ?? def.preferredMaxDistance ?? 230;
+      this.projectileSpeed = config.projectileSpeed ?? def.projectileSpeed ?? 300;
+      this.projectileLifetime = config.projectileLifetime ?? def.projectileLifetime ?? 2.2;
+      this.projectileRadius = config.projectileRadius ?? def.projectileRadius ?? 8;
+
+      // 근접/원거리 공격 속성
+      this.attackRange = config.attackRange ?? def.attackRange;
+      this.attackDamage = config.attackDamage ?? def.attackDamage;
+      const arcDeg = config.attackArcDegrees ?? def.attackArcDegrees;
       this.attackArcRad = (arcDeg * Math.PI) / 180;
 
       // 현재 AI 상태 (Idle, Patrol, Chase, Attack, Dead)
@@ -116,14 +337,14 @@
       this.lostSightChaseTimer = 0;
       this.alertTimer = 0;
 
-      // 근접 공격(Attack) 준비·판정·쿨다운 상태 데이터
+      // 공격(Attack) 준비·판정·쿨다운 상태 데이터
       this.attack = {
         phase: 'none', // 'none' | 'windup' | 'recovery'
         timer: 0,
-        windupDuration: config.attackWindupDuration ?? ENEMY_CONFIG.attackWindupDuration,
-        recoveryDuration: config.attackRecoveryDuration ?? ENEMY_CONFIG.attackRecoveryDuration,
+        windupDuration: config.attackWindupDuration ?? def.attackWindupDuration,
+        recoveryDuration: config.attackRecoveryDuration ?? def.attackRecoveryDuration,
         cooldownRemaining: 0,
-        cooldownTotal: config.attackCooldown ?? ENEMY_CONFIG.attackCooldown,
+        cooldownTotal: config.attackCooldown ?? def.attackCooldown,
         aimAngle: Math.PI,
         aimDirX: -1,
         aimDirY: 0,
@@ -220,16 +441,46 @@
   }
 
   /**
-   * 적 AI 상태 전이(Idle / Patrol / Chase / Attack / Dead), 근접 공격 판정, 플레이어 추적 및 장애물 회피 시스템
+   * 적 AI 상태 전이(Idle / Patrol / Chase / Attack / Dead), 근접 및 원거리 공격 판정, 투사체 및 장애물 회피 시스템
    */
   class EnemySystem {
     constructor(initialEnemies = []) {
       this.enemies = initialEnemies.map((cfg) => (cfg instanceof Enemy ? cfg : new Enemy(cfg)));
+      this.enemyProjectiles = [];
       this.defeatedEnemyIds = new Set();
+      this.defeatedRewards = new Map();
     }
 
     getDefeatedCount() {
       return this.defeatedEnemyIds.size;
+    }
+
+    /**
+     * Phase 14: 처치된 모든 적의 종류별 개별 보상 합계 계산
+     */
+    getDefeatedRewardTotal() {
+      let total = 0;
+      for (const reward of this.defeatedRewards.values()) {
+        total += reward;
+      }
+      return total;
+    }
+
+    /**
+     * Phase 14: 적 종류별 스폰 가중치 추첨
+     * 일반 적(ghost) ~40%, 빠른 적(stalker) ~20%, 원거리 적(thrower) ~20%, 탱커(cabinet) ~10%, 엘리트(manager) ~10%
+     */
+    static pickRandomEnemyType(rng = null) {
+      const roll =
+        rng && typeof rng.float === 'function'
+          ? rng.float(0, 100)
+          : Math.random() * 100;
+
+      if (roll < 40) return 'ghost';
+      if (roll < 60) return 'stalker';
+      if (roll < 80) return 'thrower';
+      if (roll < 90) return 'cabinet';
+      return 'manager';
     }
 
     /**
@@ -251,18 +502,32 @@
             ? officeMap.getRoomAt(spawn.x, spawn.y)?.id ?? null
             : null);
 
+        const enemyType = spawn.enemyType || EnemySystem.pickRandomEnemyType();
+        const def = ENEMY_DEFINITIONS[enemyType] || ENEMY_DEFINITIONS.ghost;
+
         return {
           id: spawn.id ?? `enemy-office-${idx + 1}`,
+          enemyType,
+          name: spawn.name ?? def.name,
           roomId: assignedRoomId,
           x: spawn.x,
           y: spawn.y,
           playerBaseSpeed,
-          maxHp: spawn.maxHp ?? ENEMY_CONFIG.maxHp,
-          detectionRange: spawn.detectionRange ?? ENEMY_CONFIG.detectionRange,
-          attackRange: spawn.attackRange ?? ENEMY_CONFIG.attackRange,
-          attackDamage: spawn.attackDamage ?? ENEMY_CONFIG.attackDamage,
-          attackCooldown: spawn.attackCooldown ?? ENEMY_CONFIG.attackCooldown,
-          attackWindupDuration: spawn.attackWindupDuration ?? ENEMY_CONFIG.attackWindupDuration
+          maxHp: spawn.maxHp ?? def.maxHp,
+          detectionRange: spawn.detectionRange ?? def.detectionRange,
+          attackRange: spawn.attackRange ?? def.attackRange,
+          attackDamage: spawn.attackDamage ?? def.attackDamage,
+          attackCooldown: spawn.attackCooldown ?? def.attackCooldown,
+          attackWindupDuration: spawn.attackWindupDuration ?? def.attackWindupDuration,
+          attackRecoveryDuration: spawn.attackRecoveryDuration ?? def.attackRecoveryDuration,
+          attackType: spawn.attackType ?? def.attackType,
+          reward: spawn.reward ?? def.reward,
+          colliderRadius: spawn.colliderRadius ?? def.colliderRadius,
+          chaseStopDistance: spawn.chaseStopDistance ?? def.chaseStopDistance,
+          preferredMinDistance: spawn.preferredMinDistance ?? def.preferredMinDistance,
+          preferredMaxDistance: spawn.preferredMaxDistance ?? def.preferredMaxDistance,
+          projectileSpeed: spawn.projectileSpeed ?? def.projectileSpeed,
+          isElite: spawn.isElite ?? def.isElite
         };
       });
     }
@@ -282,7 +547,7 @@
     }
 
     /**
-     * 매 프레임 적 AI, 근접 공격 준비/판정/쿨다운, 이동 및 사망 후 제거 처리
+     * 매 프레임 적 AI, 공격 준비/판정/쿨다운, 이동 및 사망 후 제거 처리
      */
     update(dt, player, officeMap, staticBlockers = [], playerDamageSystem = null) {
       if (dt <= 0) {
@@ -290,6 +555,15 @@
       }
 
       const isPlayerDead = !player || Boolean(player.isDead) || player.hp <= 0;
+
+      // 0. Phase 14: 원거리 적(서류 투척자) 서류 투사체 업데이트 및 플레이어 충돌 판정
+      for (let pIdx = this.enemyProjectiles.length - 1; pIdx >= 0; pIdx--) {
+        const proj = this.enemyProjectiles[pIdx];
+        const stillAlive = proj.update(dt, player, officeMap, playerDamageSystem);
+        if (!stillAlive || !proj.alive) {
+          this.enemyProjectiles.splice(pIdx, 1);
+        }
+      }
 
       for (let i = this.enemies.length - 1; i >= 0; i--) {
         const enemy = this.enemies[i];
@@ -313,7 +587,10 @@
 
         // 2. Dead 상태: 공격·추적을 모두 중단하고 사망 연출 완료 후 제거
         if (enemy.state === ENEMY_STATES.DEAD || !enemy.alive) {
-          this.defeatedEnemyIds.add(enemy.id);
+          if (!this.defeatedEnemyIds.has(enemy.id)) {
+            this.defeatedEnemyIds.add(enemy.id);
+            this.defeatedRewards.set(enemy.id, enemy.reward || 10);
+          }
           enemy.deathTimer += dt;
           if (enemy.deathTimer >= enemy.deathDuration) {
             enemy.shouldRemove = true;
@@ -408,7 +685,7 @@
     }
 
     /**
-     * 적 근접 공격 준비(Windup) 시작: 추적 이동을 멈추고 플레이어 방향으로 조준 고정
+     * 적 공격 준비(Windup) 시작: 이동을 멈추고 플레이어 방향으로 조준 고정
      */
     _startAttack(enemy, player) {
       enemy.state = ENEMY_STATES.ATTACK;
@@ -430,10 +707,9 @@
     }
 
     /**
-     * Attack 상태 업데이트: 준비 시간(0.35초) 후 단 1회 범위 판정 수행 -> 짧은 후딜 후 거리 재확인
+     * Attack 상태 업데이트: 준비 시간 후 판정/발사 수행 -> 후딜 후 거리 재확인
      */
     _updateAttackState(enemy, dt, player, playerDamageSystem, officeMap = null) {
-      // 공격 중에는 이동하지 않음 (추적 이동과 공격 애니메이션 중복 방지)
       enemy.velocity.x = 0;
       enemy.velocity.y = 0;
       enemy.isMoving = false;
@@ -447,9 +723,13 @@
 
         const overflowDt = -enemy.attack.timer;
 
-        // 공격 준비 완료 시점에 단 한 번만 공격 판정 및 쿨다운 적용
+        // 공격 준비 완료 시점에 단 한 번만 판정 및 쿨다운 적용
         if (!enemy.attack.hasAppliedStrike) {
-          this._executeMeleeStrikeOnce(enemy, player, playerDamageSystem, officeMap);
+          if (enemy.attackType === 'ranged') {
+            this._executeRangedAttackOnce(enemy, player, officeMap);
+          } else {
+            this._executeMeleeStrikeOnce(enemy, player, playerDamageSystem, officeMap);
+          }
         }
 
         enemy.attack.phase = 'recovery';
@@ -471,7 +751,40 @@
     }
 
     /**
-     * 실제 공격 판정 시점에 플레이어가 공격 사거리(45px) 및 공격 방향 범위 안에 있을 때만 1회 피해 적용
+     * Phase 14: 원거리 적(서류 투척자) 서류 투사체 발사 처리
+     */
+    _executeRangedAttackOnce(enemy, player, officeMap = null) {
+      enemy.attack.hasAppliedStrike = true;
+      enemy.attack.cooldownRemaining = enemy.attack.cooldownTotal;
+
+      if (!player || player.isDead || player.hp <= 0) {
+        return false;
+      }
+
+      const dx = player.position.x - enemy.position.x;
+      const dy = (player.position.y - 12) - (enemy.position.y - 18);
+      const len = Math.hypot(dx, dy);
+      const dirX = len > 1e-5 ? dx / len : enemy.direction.x;
+      const dirY = len > 1e-5 ? dy / len : enemy.direction.y;
+
+      const proj = new EnemyProjectile({
+        x: enemy.position.x + dirX * 14,
+        y: enemy.position.y - 18 + dirY * 14,
+        dirX,
+        dirY,
+        speed: enemy.projectileSpeed,
+        damage: enemy.attackDamage,
+        radius: enemy.projectileRadius,
+        lifeTime: enemy.projectileLifetime,
+        attackerId: enemy.id
+      });
+
+      this.enemyProjectiles.push(proj);
+      return true;
+    }
+
+    /**
+     * 실제 근접 공격 판정 시점에 플레이어가 공격 사거리 및 공격 방향 범위 안에 있을 때만 1회 피해 적용
      */
     _executeMeleeStrikeOnce(enemy, player, playerDamageSystem, officeMap = null) {
       enemy.attack.hasAppliedStrike = true;
@@ -486,7 +799,7 @@
       const dy = player.position.y - enemy.position.y;
       const dist = Math.hypot(dx, dy);
 
-      // 1. 공격 사거리(45px) 바깥이거나 벽 너머라면 피해 미적용
+      // 1. 공격 사거리 바깥이거나 벽 너머라면 피해 미적용
       if (dist > enemy.attackRange) {
         return false;
       }
@@ -631,7 +944,19 @@
         const dy = player.position.y - enemy.position.y;
         enemy.setDirection(dx, dy);
 
-        // 공격 사거리(45px) 안에 들어오면 즉시 추적 이동을 중단하고 공격(또는 쿨다운 대기) 수행
+        // Phase 14: 원거리 적(thrower) 카이팅 및 거리 유지 로직 분기
+        if (enemy.attackType === 'ranged') {
+          return this._updateRangedEnemyChase(
+            enemy,
+            dt,
+            player,
+            distToPlayer,
+            officeMap,
+            staticBlockers
+          );
+        }
+
+        // 근접 적(ghost, stalker, cabinet, manager)
         if (distToPlayer <= enemy.attackRange) {
           enemy.velocity.x = 0;
           enemy.velocity.y = 0;
@@ -713,6 +1038,76 @@
         staticBlockers,
         true
       );
+    }
+
+    /**
+     * Phase 14: 원거리 적(서류 투척자) 전용 카이팅 AI
+     * - 거리가 너무 가까우면(< preferredMinDistance) 반대 방향으로 후퇴
+     * - 거리가 너무 멀면(> preferredMaxDistance) 플레이어에게 접근
+     * - 적정 거리 내에서는 조준 유지 및 쿨다운 시 투척
+     */
+    _updateRangedEnemyChase(enemy, dt, player, distToPlayer, officeMap, staticBlockers) {
+      const minPreferred = enemy.preferredMinDistance || 150;
+      const maxPreferred = enemy.preferredMaxDistance || 230;
+
+      // 1. 공격 쿨다운이 완료되었고 사거리 내이면 공격 시도
+      if (distToPlayer <= enemy.attackRange && enemy.attack.cooldownRemaining <= 0) {
+        this._startAttack(enemy, player);
+        return;
+      }
+
+      // 2. 플레이어와의 거리가 너무 가까우면 뒤로 후퇴 (카이팅 kiting)
+      if (distToPlayer < minPreferred) {
+        const dx = enemy.position.x - player.position.x;
+        const dy = enemy.position.y - player.position.y;
+        const len = Math.hypot(dx, dy);
+        if (len > 1e-4) {
+          const retreatStep = enemy.speed * dt * 0.95;
+          const targetX = enemy.position.x + (dx / len) * 80;
+          const targetY = enemy.position.y + (dy / len) * 80;
+          this._moveTowardsPoint(
+            enemy,
+            targetX,
+            targetY,
+            enemy.speed * 0.95,
+            retreatStep,
+            dt,
+            player,
+            officeMap,
+            staticBlockers,
+            true
+          );
+        }
+        // 시선은 플레이어를 바라봄
+        enemy.setDirection(player.position.x - enemy.position.x, player.position.y - enemy.position.y);
+        return;
+      }
+
+      // 3. 플레이어와의 거리가 너무 멀면 접근
+      if (distToPlayer > maxPreferred) {
+        const approachDist = distToPlayer - maxPreferred + 15;
+        const desiredStep = Math.min(enemy.speed * dt, approachDist);
+        this._moveTowardsPoint(
+          enemy,
+          player.position.x,
+          player.position.y,
+          enemy.speed,
+          desiredStep,
+          dt,
+          player,
+          officeMap,
+          staticBlockers,
+          true
+        );
+        return;
+      }
+
+      // 4. 적정 유지 거리(150~230px) 안에서는 조준 상태로 대기
+      enemy.velocity.x = 0;
+      enemy.velocity.y = 0;
+      enemy.isMoving = false;
+      enemy.walkPhase = 0;
+      enemy.setDirection(player.position.x - enemy.position.x, player.position.y - enemy.position.y);
     }
 
     _returnToIdleFromChase(enemy) {
@@ -1174,6 +1569,8 @@
 
   PO.ENEMY_STATES = ENEMY_STATES;
   PO.ENEMY_CONFIG = ENEMY_CONFIG;
+  PO.ENEMY_DEFINITIONS = ENEMY_DEFINITIONS;
+  PO.EnemyProjectile = EnemyProjectile;
   PO.Enemy = Enemy;
   PO.EnemySystem = EnemySystem;
 })(window);

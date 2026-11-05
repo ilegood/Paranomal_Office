@@ -305,6 +305,11 @@
           ? this.combatRooms.getTotalDefeatedEnemies()
           : 0);
 
+      const customKillReward =
+        this.enemies && typeof this.enemies.getDefeatedRewardTotal === 'function'
+          ? this.enemies.getDefeatedRewardTotal()
+          : null;
+
       let rewardData = {
         totalReward: 0,
         newBalance: this.meta ? this.meta.getCurrency() : 0
@@ -312,7 +317,7 @@
 
       if (!this.runRewardAwarded && this.meta) {
         this.runRewardAwarded = true;
-        rewardData = this.meta.awardRunReward(kills, false, false);
+        rewardData = this.meta.awardRunReward(kills, false, false, customKillReward);
       }
       this.lastRunReward = rewardData;
 
@@ -354,6 +359,11 @@
           ? this.combatRooms.getTotalDefeatedEnemies()
           : 0);
 
+      const customKillReward =
+        this.enemies && typeof this.enemies.getDefeatedRewardTotal === 'function'
+          ? this.enemies.getDefeatedRewardTotal()
+          : null;
+
       const bossKilled = Boolean(this.boss && (this.boss.isDead() || this.boss.hp <= 0));
 
       let rewardData = {
@@ -363,7 +373,7 @@
 
       if (!this.runRewardAwarded && this.meta) {
         this.runRewardAwarded = true;
-        rewardData = this.meta.awardRunReward(kills, bossKilled, true);
+        rewardData = this.meta.awardRunReward(kills, bossKilled, true, customKillReward);
       }
       this.lastRunReward = rewardData;
 

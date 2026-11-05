@@ -197,11 +197,14 @@
 
     /**
      * 런 결과에 따른 획득 야근 수당 계산
-     * 공식: (처치한 적 수 * 10) + (보스 처치 여부 ? 100 : 0)
+     * 공식: (처치한 적 보상 합계 또는 처치 수 * 10) + (보스 처치 여부 ? 100 : 0)
      */
-    calculateRunReward(kills = 0, bossKilled = false) {
+    calculateRunReward(kills = 0, bossKilled = false, customKillReward = null) {
       const safeKills = Math.max(0, Math.floor(Number(kills) || 0));
-      const killReward = safeKills * META_CONFIG.REWARD.PER_KILL;
+      const killReward =
+        customKillReward !== null && customKillReward !== undefined
+          ? Math.max(0, Math.floor(Number(customKillReward) || 0))
+          : safeKills * META_CONFIG.REWARD.PER_KILL;
       const bossReward = bossKilled ? META_CONFIG.REWARD.BOSS_KILL : 0;
       const totalReward = killReward + bossReward;
 
@@ -217,8 +220,8 @@
     /**
      * 런 종료 시 영구 재화 지급 및 통계 갱신 (런당 1회 호출용)
      */
-    awardRunReward(kills = 0, bossKilled = false, isVictory = false) {
-      const reward = this.calculateRunReward(kills, bossKilled);
+    awardRunReward(kills = 0, bossKilled = false, isVictory = false, customKillReward = null) {
+      const reward = this.calculateRunReward(kills, bossKilled, customKillReward);
       this.data.currency += reward.totalReward;
 
       // 누적 통계 기록

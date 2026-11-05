@@ -1399,12 +1399,36 @@
           );
 
           if (pt) {
+            // Phase 14: 적 종류별 생성 가중치 (일반 40%, 빠른 20%, 원거리 20%, 탱커 10%, 엘리트 10%)
+            const roll = rng.float(0, 100);
+            let enemyType = 'ghost';
+            if (roll < 40) {
+              enemyType = 'ghost';
+            } else if (roll < 60) {
+              enemyType = 'stalker';
+            } else if (roll < 80) {
+              enemyType = 'thrower';
+            } else if (roll < 90) {
+              enemyType = 'cabinet';
+            } else {
+              enemyType = 'manager';
+            }
+
+            const radiusMap = {
+              ghost: 17,
+              stalker: 15,
+              thrower: 16,
+              cabinet: 22,
+              manager: 19
+            };
+
             enemySpawns.push({
               id: `enemy-combat-${enemySeq++}`,
               roomId: room.id,
+              enemyType,
               x: pt.x,
               y: pt.y,
-              radius: 17
+              radius: radiusMap[enemyType] || 17
             });
           }
         }
