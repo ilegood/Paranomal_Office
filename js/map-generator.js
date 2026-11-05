@@ -319,6 +319,36 @@
           }
         : null;
 
+      // 11. Phase 11: 보스 방 북쪽 안전 벽면에 비상 탈출 엘리베이터 스폰 좌표 설정
+      let escapeX = bossRoom ? Math.round(bossRoom.x + bossRoom.width * 0.5) : 1200;
+      let escapeY = bossRoom ? Math.round(bossRoom.y + 68) : 400;
+
+      if (bossRoom) {
+        const bossDoors = normalized.doors.filter((d) => d.roomId === bossRoom.id);
+        for (let i = 0; i < bossDoors.length; i++) {
+          const d = bossDoors[i];
+          if (d.sideOnRoom === 'north') {
+            const doorCenterX = d.x + d.width * 0.5;
+            if (Math.abs(escapeX - doorCenterX) < 90) {
+              escapeX = Math.round(bossRoom.x + bossRoom.width * 0.26);
+            }
+          }
+        }
+      }
+
+      const escapeDeviceSpawn = bossRoom
+        ? {
+            id: 'escape-device-elevator',
+            roomId: bossRoom.id,
+            name: '비상 탈출 엘리베이터',
+            x: escapeX,
+            y: escapeY,
+            width: 92,
+            height: 52,
+            zHeight: 70
+          }
+        : null;
+
       return {
         seed: displaySeed,
         isRandomGenerated: true,
@@ -336,6 +366,7 @@
         playerSpawn,
         enemySpawns,
         bossSpawn,
+        escapeDeviceSpawn,
         itemSpawns,
         targetSpawns: [],
         testHazardSpawn: null
@@ -1607,6 +1638,14 @@
           const bs = layout.bossSpawn;
           const br = tempMap.getRoomAt(bs.x, bs.y);
           if (!br || br.type !== 'boss' || hitsSolid(bs.x, bs.y, 30)) {
+            return false;
+          }
+        }
+
+        if (layout.escapeDeviceSpawn) {
+          const es = layout.escapeDeviceSpawn;
+          const er = tempMap.getRoomAt(es.x, es.y);
+          if (!er || er.type !== 'boss' || hitsSolid(es.x, es.y, 20)) {
             return false;
           }
         }

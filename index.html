@@ -30,13 +30,23 @@
                 <div id="hp-bar-fill" class="hp-bar-fill" style="width: 100%;"></div>
               </div>
             </div>
+
+            <!-- Phase 12: 보유 야근 수당 및 상점 접근 칩 -->
+            <div class="hud-currency-chip" id="hud-currency-chip" title="현재 보유 야근 수당">
+              <span class="currency-icon" aria-hidden="true">💼</span>
+              <div class="currency-info">
+                <span class="currency-label">야근 수당</span>
+                <span id="hud-currency-val" class="currency-value">₩0</span>
+              </div>
+              <button id="hud-open-shop-btn" type="button" class="hud-shop-btn" title="영구 강화 상점 열기">강화실</button>
+            </div>
           </section>
 
           <!-- 우측 상단: 프로토타입 배지, 실시간 전체 구역 미니맵 및 디버그 시드 표시(기본 숨김) -->
           <div class="hud-top-right">
             <aside class="hud-card prototype-badge">
               <span class="status-dot" aria-hidden="true"></span>
-              <span class="prototype-text">PROTOTYPE · Phase 10 (보스 방 및 기본 보스 전투)</span>
+              <span class="prototype-text">PROTOTYPE · Phase 12 (영구 재화 및 영구 강화)</span>
             </aside>
 
             <aside id="minimap-panel" class="hud-card minimap-panel" aria-label="전체 구역 미니맵">
@@ -184,6 +194,36 @@
           <button id="restart-btn" type="button" class="restart-btn">다시 시작</button>
         </div>
       </div>
+
+      <!-- Phase 11: 보스 처치 후 탈출 성공 시 표시되는 승리 결과 오버레이 -->
+      <div id="victory-overlay" class="victory-overlay" role="dialog" aria-modal="true" aria-labelledby="victory-title" hidden>
+        <div class="hud-card victory-card">
+          <span class="victory-badge">OVERTIME CLEARED · ESCAPED</span>
+          <h2 id="victory-title" class="victory-title">탈출 성공!</h2>
+          <p class="victory-subtitle">야근의 굴레를 끊고 안전하게 퇴근했습니다.</p>
+
+          <div class="victory-stats-grid">
+            <div class="victory-stat-item">
+              <span class="victory-stat-label">런 진행 시간</span>
+              <span id="victory-stat-time" class="victory-stat-value">00:00</span>
+            </div>
+            <div class="victory-stat-item">
+              <span class="victory-stat-label">처치한 적 수</span>
+              <span id="victory-stat-kills" class="victory-stat-value">0마리</span>
+            </div>
+            <div class="victory-stat-item">
+              <span class="victory-stat-label">보스 처치 여부</span>
+              <span id="victory-stat-boss" class="victory-stat-value">야근 감독관 처치 완료</span>
+            </div>
+            <div class="victory-stat-item victory-stat-item-full">
+              <span class="victory-stat-label">장비 및 강화 상태</span>
+              <span id="victory-stat-equipment" class="victory-stat-value">스테이플러 / 권총</span>
+            </div>
+          </div>
+
+          <button id="victory-restart-btn" type="button" class="restart-btn victory-restart-btn">새로운 런 시작</button>
+        </div>
+      </div>
     </div>
   </main>
 
@@ -195,6 +235,7 @@
   <script src="js/movement.js"></script>
   <script src="js/enemy.js"></script>
   <script src="js/boss.js"></script>
+  <script src="js/escape-device.js"></script>
   <script src="js/combat-room.js"></script>
   <script src="js/combat.js"></script>
   <script src="js/item.js"></script>

@@ -568,6 +568,28 @@
       };
       this.enemySpawns = layoutConfig.enemySpawns.map((s) => ({ ...s }));
       this.bossSpawn = layoutConfig.bossSpawn ? { ...layoutConfig.bossSpawn } : null;
+      this.escapeDeviceSpawn = layoutConfig.escapeDeviceSpawn
+        ? { ...layoutConfig.escapeDeviceSpawn }
+        : null;
+
+      // 보스 방이 존재하나 escapeDeviceSpawn이 명시되지 않은 경우 자동 배치
+      if (!this.escapeDeviceSpawn && this.rooms) {
+        const bossRoom = this.rooms.find(
+          (r) => r.type === (PO.ROOM_TYPES && PO.ROOM_TYPES.BOSS ? PO.ROOM_TYPES.BOSS : 'boss')
+        );
+        if (bossRoom) {
+          this.escapeDeviceSpawn = {
+            id: 'escape-device-elevator',
+            roomId: bossRoom.id,
+            name: '비상 탈출 엘리베이터',
+            x: Math.round(bossRoom.x + bossRoom.width * 0.5),
+            y: Math.round(bossRoom.y + 68),
+            width: 92,
+            height: 52,
+            zHeight: 70
+          };
+        }
+      }
       this.itemSpawns = layoutConfig.itemSpawns.map((s) => ({ ...s }));
       this.targetSpawns = layoutConfig.targetSpawns.map((s) => ({ ...s }));
       this.testHazardSpawn = layoutConfig.testHazardSpawn

@@ -46,6 +46,32 @@
     }
 
     /**
+     * Phase 11: 보스 방 클리어 완료 여부 확인
+     */
+    isBossRoomCleared() {
+      for (const rec of this.roomRecords.values()) {
+        if (rec.isBossRoom) {
+          const clearedState = (PO.ROOM_STATES && PO.ROOM_STATES.CLEARED) || 'Cleared';
+          return rec.hasCleared || rec.room.state === clearedState;
+        }
+      }
+      return Boolean(this.boss && (this.boss.isDead() || this.boss.hp <= 0));
+    }
+
+    /**
+     * Phase 11: 전체 전투 방에서 처치된 일반 적 총합 산출
+     */
+    getTotalDefeatedEnemies() {
+      let count = 0;
+      for (const rec of this.roomRecords.values()) {
+        if (!rec.isBossRoom && rec.defeatedEnemyIds) {
+          count += rec.defeatedEnemyIds.size;
+        }
+      }
+      return count;
+    }
+
+    /**
      * 현재 맵과 적 목록 및 보스를 기준으로 방별 전투 상태 및 소속 적 로스터를 초기화
      * (시작 및 재시작 시 호출되어 이전 전투 데이터를 완전히 제거)
      */

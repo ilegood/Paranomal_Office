@@ -225,6 +225,11 @@
   class EnemySystem {
     constructor(initialEnemies = []) {
       this.enemies = initialEnemies.map((cfg) => (cfg instanceof Enemy ? cfg : new Enemy(cfg)));
+      this.defeatedEnemyIds = new Set();
+    }
+
+    getDefeatedCount() {
+      return this.defeatedEnemyIds.size;
     }
 
     /**
@@ -308,6 +313,7 @@
 
         // 2. Dead 상태: 공격·추적을 모두 중단하고 사망 연출 완료 후 제거
         if (enemy.state === ENEMY_STATES.DEAD || !enemy.alive) {
+          this.defeatedEnemyIds.add(enemy.id);
           enemy.deathTimer += dt;
           if (enemy.deathTimer >= enemy.deathDuration) {
             enemy.shouldRemove = true;

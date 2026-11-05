@@ -32,12 +32,19 @@
       // 마우스 월드 조준 좌표 (마우스 입력 전에는 null)
       this.aimWorld = null;
       this.isGameOver = false;
+      this.isVictory = false;
+      this.runTime = 0;
+      this.ui.hideVictory();
+      this.isVictory = false;
+      this.runTime = 0;
+      this.escapeDevice = null;
 
       // 랜덤 맵 생성 및 플레이어, 피해 시스템, 적, 전투, 아이템 등 런타임 상태 초기화
       this._initRunState({ seed: startupOptions.initialSeed });
 
-      // 게임 오버 화면의 재시작 버튼 이벤트 연결 (재시작 시 새로운 랜덤 맵 생성)
+      // 게임 오버 화면 및 탈출 성공 화면의 재시작 버튼 이벤트 연결 (재시작 시 새로운 랜덤 맵 생성)
       this.ui.bindRestart(() => this.restart());
+      this.ui.bindVictoryRestart(() => this.restart());
 
       // 디버그 시드 표시 토글 단축키(F3) 연결 (일반 플레이 UI 비간섭)
       this._onDebugKeyDown = (event) => {
@@ -136,6 +143,9 @@
             : null;
 
       this.isGameOver = false;
+      this.isVictory = false;
+      this.runTime = 0;
+      this.ui.hideVictory();
 
       // 1. 새로운 맵 생성 및 렌더러·미니맵의 이전 맵 잔여 상태 초기화
       this.map = this._createMapForRun(requestedSeed);
@@ -186,6 +196,12 @@
         ? new PO.ItemSystem(PO.ItemSystem.createDefaultMapItems(this.map))
         : null;
 
+      // Phase 11: 보스 방 비상 탈출 엘리베이터(탈출 장치) 초기화
+      this.escapeDevice =
+        PO.EscapeDevice && this.map.escapeDeviceSpawn
+          ? new PO.EscapeDevice(this.map.escapeDeviceSpawn)
+          : null;
+
       // 테스트용 고정 위험 구역은 레이아웃에 명시된 경우에만 활성화
       this.testHazard =
         PO.TestDamageZone && this.map.testHazardSpawn
@@ -234,11 +250,61 @@
      * 플레이어 사망(체력 0 이하) 전환 시 입력 초기화 및 게임 오버 상태 활성화
      */
     _handlePlayerDeath() {
-      if (this.isGameOver) {
+      if (this.isGameOver || this.isVictory) {
         return;
       }
       this.isGameOver = true;
       this.input.reset();
+    }
+
+    /**
+     * Phase 11: 탈출 장치와 상호작용하여 런을 성공적으로 완료(퇴근)했을 때 호출
+     */
+    _handleVictory() {
+      if (this.isVictory || this.isGameOver) {
+        return;
+      }
+      this.isVictory = true;
+      this.input.reset();
+
+      if (this.player) {
+        this.player.velocity.x = 0;
+        this.player.velocity.y = 0;
+        this.player.isMoving = false;
+      }
+
+      // 런 통계 데이터 수집
+      const totalSec = Math.max(0, Math.floor(this.runTime));
+      const m = Math.floor(totalSec / 60);
+      const s = totalSec % 60;
+      const formattedTime = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+
+      const kills =
+        (this.enemies && typeof this.enemies.getDefeatedCount === 'function'
+          ? this.enemies.getDefeatedCount()
+          : 0) ||
+        (this.combatRooms && typeof this.combatRooms.getTotalDefeatedEnemies === 'function'
+          ? this.combatRooms.getTotalDefeatedEnemies()
+          : 0);
+
+      const bossKilled = Boolean(this.boss && (this.boss.isDead() || this.boss.hp <= 0));
+
+      let equipmentStr = '기본 장비';
+      if (this.combat) {
+        const upLevel = this.combat.upgradeLevel || 0;
+        const meleeDmg = this.combat.getWeaponDamage(1);
+        const rangedDmg = this.combat.getWeaponDamage(2);
+        const pistolAmmo = this.combat.weapons[2] ? this.combat.weapons[2].ammo : 0;
+        const upgradeBonus = upLevel > 0 ? ` (+${upLevel * 25}% 강화)` : '';
+        equipmentStr = `스테이플러 (${meleeDmg} dmg) · 권총 (${rangedDmg} dmg, ${pistolAmmo}발)${upgradeBonus}`;
+      }
+
+      this.ui.showVictory({
+        runTime: formattedTime,
+        kills,
+        bossKilled,
+        equipment: equipmentStr
+      });
     }
 
     /**
@@ -270,7 +336,8 @@
         this.isGameOver,
         this.items ? this.items.getUIState(this.player, this.combat) : null,
         this.combatRooms ? this.combatRooms.getUIState() : null,
-        this.boss ? this.boss.getUIState() : null
+        this.boss ? this.boss.getUIState() : null,
+        this.escapeDevice ? this.escapeDevice.getPrompt() : null
       );
       this.render();
     }
@@ -296,7 +363,8 @@
         this.isGameOver,
         this.items ? this.items.getUIState(this.player, this.combat) : null,
         this.combatRooms ? this.combatRooms.getUIState() : null,
-        this.boss ? this.boss.getUIState() : null
+        this.boss ? this.boss.getUIState() : null,
+        this.escapeDevice ? this.escapeDevice.getPrompt() : null
       );
       this.render();
 
@@ -351,6 +419,19 @@
     }
 
     update(dt) {
+      if (this.isVictory) {
+        // Phase 11: 탈출 성공 화면이 표시된 동안에는 플레이어 이동, 공격, 대시 및 적/보스 이동/공격을 모두 중단
+        this.input.consumeWeaponSwitch();
+        this.input.consumeDashInput();
+        this.input.consumeInteractInput();
+        this.input.consumeAttackInput();
+        return;
+      }
+
+      if (!this.isGameOver) {
+        this.runTime += dt;
+      }
+
       const playerCanAct = !this.isGameOver && !this.player.isDead;
 
       if (playerCanAct) {
@@ -399,18 +480,29 @@
         // 5. 플레이어 상태 타이머(대시 쿨다운 1.2s, 대시 무적 0.25s, 피격 무적 0.6s, 잔상 수명) 업데이트
         this.player.updateStatusTimers(dt);
 
-        // 6. 이동 완료 후 E 키 아이템 상호작용 처리 (자동 획득 없음)
+        // 6. 탈출 장치 업데이트 및 이동 완료 후 E 키 탈출/아이템 상호작용 처리 (자동 획득 없음)
+        if (this.escapeDevice) {
+          this.escapeDevice.update(dt, this.player, this.boss, this.combatRooms);
+        }
+
         if (this.items) {
           this.items.update(dt, this.player, this.combat, this.map);
-          if (this.input.consumeInteractInput()) {
+        }
+
+        const isInteractPressed = this.input.consumeInteractInput();
+        if (isInteractPressed) {
+          if (this.escapeDevice && this.escapeDevice.isFocused) {
+            if (this.escapeDevice.tryInteract(this.player)) {
+              this._handleVictory();
+              return;
+            }
+          } else if (this.items) {
             this.items.tryInteract({
               player: this.player,
               combat: this.combat,
               officeMap: this.map
             });
           }
-        } else {
-          this.input.consumeInteractInput();
         }
 
         // 7. 이동 완료 후 플레이어 최신 좌표 기준으로 조준각 재보정
@@ -433,6 +525,9 @@
         this.input.consumeInteractInput();
         this.input.consumeAttackInput();
         this.player.updateStatusTimers(dt);
+        if (this.escapeDevice) {
+          this.escapeDevice.update(dt, this.player, this.boss, this.combatRooms);
+        }
         if (this.items) {
           this.items.update(dt, this.player, this.combat, this.map);
         }
@@ -496,6 +591,8 @@
           }
         : this.input.getState();
 
+      const escapePrompt = this.escapeDevice ? this.escapeDevice.getPrompt() : null;
+
       this.ui.update(
         this.player,
         uiInputState,
@@ -504,7 +601,8 @@
         this.isGameOver,
         this.items ? this.items.getUIState(this.player, this.combat) : null,
         this.combatRooms ? this.combatRooms.getUIState() : null,
-        this.boss ? this.boss.getUIState() : null
+        this.boss ? this.boss.getUIState() : null,
+        escapePrompt
       );
     }
 
@@ -519,7 +617,8 @@
         this.enemies,
         this.playerDamage,
         this.items,
-        this.boss
+        this.boss,
+        this.escapeDevice
       );
 
       if (this.minimap) {
@@ -529,7 +628,8 @@
           this.enemies,
           this.items,
           this.renderer.camera,
-          this.boss
+          this.boss,
+          this.escapeDevice
         );
       }
     }

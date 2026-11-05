@@ -38,6 +38,14 @@
       this.bossHpTextEl = document.getElementById('boss-hp-text');
       this.bossHpFillEl = document.getElementById('boss-hp-bar-fill');
 
+      // Phase 11: 탈출 성공(Victory) 결과 오버레이 요소
+      this.victoryOverlayEl = document.getElementById('victory-overlay');
+      this.victoryTimeEl = document.getElementById('victory-stat-time');
+      this.victoryKillsEl = document.getElementById('victory-stat-kills');
+      this.victoryBossEl = document.getElementById('victory-stat-boss');
+      this.victoryEquipmentEl = document.getElementById('victory-stat-equipment');
+      this.victoryRestartBtnEl = document.getElementById('victory-restart-btn');
+
       this.keyEls = {
         up: document.getElementById('key-w'),
         left: document.getElementById('key-a'),
@@ -112,6 +120,50 @@
     }
 
     /**
+     * Phase 11: 탈출 성공 화면 재시작 버튼 클릭 핸들러 바인딩
+     */
+    bindVictoryRestart(onRestart) {
+      if (!this.victoryRestartBtnEl || typeof onRestart !== 'function') {
+        return;
+      }
+      this.victoryRestartBtnEl.addEventListener('click', () => {
+        onRestart();
+      });
+    }
+
+    /**
+     * Phase 11: 탈출 성공(Victory) 결과 화면 표시
+     */
+    showVictory(stats = {}) {
+      if (this.victoryTimeEl) {
+        this.victoryTimeEl.textContent = stats.runTime || '00:00';
+      }
+      if (this.victoryKillsEl) {
+        this.victoryKillsEl.textContent = `${stats.kills ?? 0}마리`;
+      }
+      if (this.victoryBossEl) {
+        this.victoryBossEl.textContent = stats.bossKilled
+          ? '야근 감독관 처치 완료'
+          : (stats.bossStatus || '야근 감독관 처치 완료');
+      }
+      if (this.victoryEquipmentEl) {
+        this.victoryEquipmentEl.textContent = stats.equipment || '기본 장비';
+      }
+      if (this.victoryOverlayEl) {
+        this.victoryOverlayEl.hidden = false;
+      }
+    }
+
+    /**
+     * Phase 11: 탈출 성공 결과 화면 숨김
+     */
+    hideVictory() {
+      if (this.victoryOverlayEl) {
+        this.victoryOverlayEl.hidden = true;
+      }
+    }
+
+    /**
      * 게임 오버 오버레이 표시 여부 제어
      */
     setGameOver(isGameOver) {
@@ -148,7 +200,8 @@
       isGameOver = false,
       itemUIState = null,
       combatRoomUIState = null,
-      bossUIState = null
+      bossUIState = null,
+      escapePrompt = null
     ) {
       this._syncHealth(player.hp, player.maxHp, player.hurtFlashTimer > 0);
       const effectiveGameOver = isGameOver || Boolean(player.isDead);
@@ -166,7 +219,7 @@
         this._syncDash(effectiveDashState);
       }
 
-      this._syncItems(effectiveGameOver ? null : itemUIState);
+      this._syncItems(effectiveGameOver ? null : itemUIState, effectiveGameOver ? null : escapePrompt);
       this._syncCombatRoom(effectiveGameOver ? null : combatRoomUIState);
       this._syncBoss(effectiveGameOver ? null : bossUIState);
     }
@@ -355,10 +408,10 @@
       }
     }
 
-    _syncItems(itemUIState) {
-      const prompt = itemUIState ? itemUIState.prompt : null;
+    _syncItems(itemUIState, escapePrompt = null) {
+      const prompt = escapePrompt || (itemUIState ? itemUIState.prompt : null);
       const promptSig = prompt
-        ? `${prompt.itemId}|${prompt.canPickup}|${prompt.title}|${prompt.detail}`
+        ? `${prompt.itemId}|${prompt.canPickup}|${prompt.title}|${prompt.detail}|${Boolean(prompt.isEscape)}`
         : '';
 
       if (promptSig !== this._lastPromptSig) {
@@ -369,6 +422,7 @@
           } else {
             this.interactionPromptEl.hidden = false;
             this.interactionPromptEl.classList.toggle('is-disabled', !prompt.canPickup);
+            this.interactionPromptEl.classList.toggle('is-escape', Boolean(prompt.isEscape));
             if (this.interactionKeyEl) {
               this.interactionKeyEl.textContent = prompt.keyLabel || 'E';
             }

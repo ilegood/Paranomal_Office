@@ -110,7 +110,8 @@
       enemySystem = null,
       playerDamageSystem = null,
       itemSystem = null,
-      boss = null
+      boss = null,
+      escapeDevice = null
     ) {
       if (player && officeMap) {
         this.updateCamera(player, officeMap);
@@ -146,6 +147,9 @@
       }
       if (boss) {
         this._drawBossTelegraphs(ctx, boss);
+      }
+      if (escapeDevice) {
+        this._drawEscapeDeviceFloor(ctx, escapeDevice);
       }
       this._drawShadows(ctx, officeMap, player, combat, enemySystem, itemSystem, boss);
       if (!player.isDead) {
@@ -259,6 +263,15 @@
         });
       }
 
+      if (escapeDevice) {
+        renderQueue.push({
+          kind: 'escape_device',
+          sortY: escapeDevice.getSortY(),
+          data: escapeDevice,
+          isFocused: escapeDevice.isFocused
+        });
+      }
+
       const equippedWeaponId = combat ? combat.getCurrentWeaponState().config.id : null;
       const activeMeleeEffect =
         combat && combat.meleeEffects && combat.meleeEffects.length > 0
@@ -306,6 +319,9 @@
             break;
           case 'boss':
             this._drawBoss(ctx, item.data);
+            break;
+          case 'escape_device':
+            this._drawEscapeDevice(ctx, item.data, item.isFocused);
             break;
           default:
             break;
@@ -2838,6 +2854,286 @@
         ctx.strokeText(label, 0, barY - 4);
         ctx.fillStyle = isTelegraph ? '#fde047' : '#fda4af';
         ctx.fillText(label, 0, barY - 4);
+      }
+
+      ctx.restore();
+    }
+
+    /**
+     * Phase 11: 탈출 장치 바닥 영역 및 활성화/비활성화 가동 이펙트 렌더링
+     */
+    _drawEscapeDeviceFloor(ctx, device) {
+      if (!device) return;
+      const x = device.position.x;
+      const y = device.position.y;
+      const isActive = device.isActive;
+      const isFocused = device.isFocused;
+      const animPhase = device.animPhase || 0;
+
+      ctx.save();
+      ctx.translate(x, y);
+
+      if (isActive) {
+        // 활성화 상태: 에메랄드 그린 발광 패드 및 바닥 진입 펄스 링
+        const pulse = 0.5 + 0.5 * Math.sin(animPhase * 3.5);
+        const ringScale = (animPhase * 0.9) % 1.0;
+
+        // 1. 바닥 은은한 그린 방사형 그라데이션
+        const grad = ctx.createRadialGradient(0, 8, 10, 0, 8, 56);
+        grad.addColorStop(0, `rgba(52, 211, 153, ${(0.32 + pulse * 0.15).toFixed(3)})`);
+        grad.addColorStop(0.65, `rgba(16, 185, 129, ${(0.14 + pulse * 0.08).toFixed(3)})`);
+        grad.addColorStop(1, 'rgba(5, 150, 105, 0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.ellipse(0, 8, 62, 32, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 2. 바닥 탑승 카펫/발판
+        ctx.fillStyle = '#0f291e';
+        ctx.strokeStyle = '#10b981';
+        ctx.lineWidth = 2;
+        this._fillRoundRectOnly(ctx, -38, -6, 76, 28, 6);
+        ctx.beginPath();
+        this._traceRoundRect(ctx, -38, -6, 76, 28, 6);
+        ctx.stroke();
+
+        // 3. 외부로 확산되는 비상 탈출 가동 링
+        ctx.strokeStyle = `rgba(52, 211, 153, ${(1 - ringScale) * 0.65})`;
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.ellipse(0, 8, 38 + ringScale * 26, 18 + ringScale * 14, 0, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // 4. 엘리베이터 입구 방향 쉐브론 화살표 (▲▲)
+        ctx.fillStyle = '#34d399';
+        ctx.font = 'bold 12px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('▲  ▲', 0, 12);
+
+        // 5. 근접 포커스 시 점선 강조 링
+        if (isFocused) {
+          ctx.strokeStyle = '#6ee7b7';
+          ctx.lineWidth = 2.2;
+          ctx.setLineDash([6, 4]);
+          ctx.beginPath();
+          ctx.ellipse(0, 8, 54, 28, 0, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+      } else {
+        // 비활성화 상태: 어둡고 붉은 보안 잠금 표시
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.08)';
+        ctx.beginPath();
+        ctx.ellipse(0, 6, 46, 22, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 바닥 금지 발판
+        ctx.fillStyle = '#1c151c';
+        ctx.strokeStyle = '#4a1d2e';
+        ctx.lineWidth = 1.6;
+        this._fillRoundRectOnly(ctx, -34, -4, 68, 22, 5);
+        ctx.beginPath();
+        this._traceRoundRect(ctx, -34, -4, 68, 22, 5);
+        ctx.stroke();
+
+        // 잠금 표시선
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(-16, 7);
+        ctx.lineTo(16, 7);
+        ctx.stroke();
+
+        if (isFocused) {
+          ctx.strokeStyle = 'rgba(239, 68, 68, 0.6)';
+          ctx.lineWidth = 1.8;
+          ctx.setLineDash([5, 4]);
+          ctx.beginPath();
+          ctx.ellipse(0, 6, 48, 24, 0, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+      }
+
+      ctx.restore();
+    }
+
+    /**
+     * Phase 11: 탈출 장치 본체(엘리베이터 하우징, 도어, 상단 전광판 및 상태 램프) 렌더링
+     */
+    _drawEscapeDevice(ctx, device, isFocused = false) {
+      if (!device) return;
+      const x = device.position.x;
+      const y = device.position.y;
+      const w = device.width;
+      const h = device.height;
+      const zh = device.zHeight;
+      const isActive = device.isActive;
+      const animPhase = device.animPhase || 0;
+
+      ctx.save();
+      ctx.translate(x, y);
+
+      const hw = w * 0.5;
+      const hh = h * 0.5;
+
+      // 1. 바닥 그림자 (쿼터뷰 우하단 드롭)
+      ctx.fillStyle = 'rgba(7, 9, 16, 0.55)';
+      ctx.beginPath();
+      ctx.ellipse(3, 4, hw + 4, hh + 2, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 2. 엘리베이터 외곽 강철 프레임 하우징 (2.5D 입체 박스)
+      ctx.fillStyle = '#1e2433';
+      ctx.strokeStyle = OUTLINE_COLOR;
+      ctx.lineWidth = 2.5;
+      this._fillRoundRectOnly(ctx, -hw, -hh - zh, w, zh + hh * 2, 8);
+      ctx.beginPath();
+      this._traceRoundRect(ctx, -hw, -hh - zh, w, zh + hh * 2, 8);
+      ctx.stroke();
+
+      // 프레임 상단 지붕면 (밝은 하이라이트)
+      ctx.fillStyle = '#2d374d';
+      this._fillRoundRectOnly(ctx, -hw + 2, -hh - zh + 2, w - 4, 18, 6);
+
+      // 3. 엘리베이터 내부 개구부 / 도어 영역
+      const doorW = w - 24;
+      const doorH = zh - 6;
+      const doorX = -doorW * 0.5;
+      const doorY = -doorH;
+
+      if (isActive) {
+        // 활성화 상태: 엘리베이터 내부 오픈 및 밝은 조명 연출
+        const innerGrad = ctx.createLinearGradient(0, doorY, 0, 0);
+        innerGrad.addColorStop(0, '#042f2e');
+        innerGrad.addColorStop(0.7, '#0f766e');
+        innerGrad.addColorStop(1, '#14b8a6');
+        ctx.fillStyle = innerGrad;
+        ctx.fillRect(doorX, doorY, doorW, doorH);
+
+        // 내부 바닥 카펫
+        ctx.fillStyle = '#065f46';
+        ctx.fillRect(doorX + 2, -12, doorW - 4, 12);
+
+        // 내부 측면 벽선 및 버튼 패널
+        ctx.fillStyle = '#2dd4bf';
+        ctx.fillRect(doorX + 6, doorY + 16, 4, 14);
+
+        // 개방되어 양쪽 벽으로 수납된 슬라이딩 도어
+        ctx.fillStyle = '#1e293b';
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 1.5;
+        ctx.fillRect(doorX, doorY, 8, doorH);
+        ctx.strokeRect(doorX, doorY, 8, doorH);
+        ctx.fillRect(doorX + doorW - 8, doorY, 8, doorH);
+        ctx.strokeRect(doorX + doorW - 8, doorY, 8, doorH);
+
+        // 내부 상단 다운라이트 광원 효과
+        const lampPulse = 0.8 + 0.2 * Math.sin(animPhase * 5);
+        ctx.fillStyle = `rgba(204, 251, 241, ${(lampPulse * 0.8).toFixed(2)})`;
+        ctx.beginPath();
+        ctx.arc(0, doorY + 4, 7, 0, Math.PI);
+        ctx.fill();
+      } else {
+        // 비활성화 상태: 굳게 닫힌 강철 이중 도어 및 보안 잠금
+        ctx.fillStyle = '#151926';
+        ctx.fillRect(doorX, doorY, doorW, doorH);
+
+        const halfDoorW = doorW * 0.5;
+        ctx.fillStyle = '#1f2537';
+        ctx.strokeStyle = '#0b0f19';
+        ctx.lineWidth = 1.5;
+        ctx.fillRect(doorX, doorY, halfDoorW - 1, doorH);
+        ctx.strokeRect(doorX, doorY, halfDoorW - 1, doorH);
+        ctx.fillRect(0, doorY, halfDoorW, doorH);
+        ctx.strokeRect(0, doorY, halfDoorW, doorH);
+
+        ctx.strokeStyle = '#0b0f19';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0, doorY);
+        ctx.lineTo(0, 0);
+        ctx.stroke();
+
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.45)';
+        for (let sx = doorX + 6; sx < doorX + doorW - 8; sx += 14) {
+          ctx.beginPath();
+          ctx.moveTo(sx, -26);
+          ctx.lineTo(sx + 7, -26);
+          ctx.lineTo(sx - 2, -10);
+          ctx.lineTo(sx - 9, -10);
+          ctx.fill();
+        }
+
+        ctx.fillStyle = '#450a0a';
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 1.5;
+        this._fillRoundRectOnly(ctx, -10, -32, 20, 16, 3);
+        ctx.beginPath();
+        this._traceRoundRect(ctx, -10, -32, 20, 16, 3);
+        ctx.stroke();
+
+        ctx.fillStyle = '#f87171';
+        ctx.font = 'bold 9px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('🔒', 0, -20);
+      }
+
+      // 4. 엘리베이터 상단 디지털 안내 전광판
+      const signY = -hh - zh + 6;
+      ctx.fillStyle = '#0b0f19';
+      ctx.strokeStyle = isActive ? '#059669' : '#7f1d1d';
+      ctx.lineWidth = 1.5;
+      this._fillRoundRectOnly(ctx, -hw + 10, signY, w - 20, 16, 3);
+      ctx.beginPath();
+      this._traceRoundRect(ctx, -hw + 10, signY, w - 20, 16, 3);
+      ctx.stroke();
+
+      ctx.textAlign = 'center';
+      if (isActive) {
+        ctx.font = 'bold 9.5px "Malgun Gothic", sans-serif';
+        ctx.fillStyle = '#34d399';
+        ctx.fillText('EXIT ▲ 탈출구', 0, signY + 11.5);
+
+        const lampFlash = Math.sin(animPhase * 6) > 0;
+        ctx.fillStyle = lampFlash ? '#6ee7b7' : '#059669';
+        ctx.beginPath();
+        ctx.arc(-hw + 15, signY + 8, 3, 0, Math.PI * 2);
+        ctx.arc(hw - 15, signY + 8, 3, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.font = 'bold 9px "Malgun Gothic", sans-serif';
+        ctx.fillStyle = '#f87171';
+        ctx.fillText('RESTRICTED', 0, signY + 11);
+
+        const lampFlash = Math.sin(animPhase * 3) > 0;
+        ctx.fillStyle = lampFlash ? '#ef4444' : '#7f1d1d';
+        ctx.beginPath();
+        ctx.arc(-hw + 15, signY + 8, 3, 0, Math.PI * 2);
+        ctx.arc(hw - 15, signY + 8, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // 5. 플레이어가 상호작용 가능 범위 내에 진입(isFocused) 시 상단 플로팅 뱃지 표시
+      if (isFocused) {
+        const badgeY = -hh - zh - 14 + Math.sin(animPhase * 5) * 3;
+        ctx.save();
+        ctx.font = 'bold 11px "Malgun Gothic", sans-serif';
+        const label = isActive ? '[E] 탈출' : '[잠김]';
+        const textW = ctx.measureText(label).width;
+
+        ctx.fillStyle = isActive ? 'rgba(6, 78, 59, 0.95)' : 'rgba(69, 10, 10, 0.92)';
+        ctx.strokeStyle = isActive ? '#34d399' : '#ef4444';
+        ctx.lineWidth = 1.8;
+        this._fillRoundRectOnly(ctx, -textW * 0.5 - 7, badgeY - 11, textW + 14, 18, 5);
+        ctx.beginPath();
+        this._traceRoundRect(ctx, -textW * 0.5 - 7, badgeY - 11, textW + 14, 18, 5);
+        ctx.stroke();
+
+        ctx.fillStyle = isActive ? '#ecfdf5' : '#fee2e2';
+        ctx.textAlign = 'center';
+        ctx.fillText(label, 0, badgeY + 2);
+        ctx.restore();
       }
 
       ctx.restore();

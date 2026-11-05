@@ -132,7 +132,8 @@
       enemySystem = null,
       itemSystem = null,
       camera = null,
-      boss = null
+      boss = null,
+      escapeDevice = null
     ) {
       if (!this.canvas || !this.ctx || !officeMap || !player) {
         return;
@@ -426,6 +427,57 @@
         ctx.restore();
       }
 
+      // 8-3. Phase 11: 탈출 장치(비상 탈출 엘리베이터) 마커 표시
+      let escapeMarker = null;
+      if (escapeDevice) {
+        const emp = proj.worldToMini(escapeDevice.position.x, escapeDevice.position.y);
+        escapeMarker = {
+          x: emp.x,
+          y: emp.y,
+          isActive: Boolean(escapeDevice.isActive)
+        };
+
+        ctx.save();
+        ctx.translate(emp.x, emp.y);
+
+        if (escapeDevice.isActive) {
+          // 활성화 상태: 에메랄드 그린 빛나는 펄스 별/다이아몬드 마커
+          const escPulse = 0.5 + 0.5 * Math.sin(this._pulseTime * 4);
+          const escR = 4.8 * markerScale;
+
+          ctx.beginPath();
+          ctx.arc(0, 0, escR + 2.0 + escPulse * 2.5, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(52, 211, 153, 0.42)';
+          ctx.fill();
+
+          ctx.fillStyle = '#10b981';
+          ctx.strokeStyle = '#022c22';
+          ctx.lineWidth = 1.4;
+          ctx.beginPath();
+          ctx.rect(-escR, -escR, escR * 2, escR * 2);
+          ctx.fill();
+          ctx.stroke();
+
+          // 화이트 코어
+          ctx.fillStyle = '#ecfdf5';
+          ctx.beginPath();
+          ctx.arc(0, 0, escR * 0.45, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          // 비활성화 상태: 작은 딤드 스퀘어 마커
+          const escR = 3.2 * markerScale;
+          ctx.fillStyle = '#64748b';
+          ctx.strokeStyle = '#090d16';
+          ctx.lineWidth = 1.1;
+          ctx.beginPath();
+          ctx.rect(-escR, -escR, escR * 2, escR * 2);
+          ctx.fill();
+          ctx.stroke();
+        }
+
+        ctx.restore();
+      }
+
       // 9. 플레이어 현재 위치 표시 (가장 명확하게 구분되는 시안 펄스 링 + 시선 방향 + 화이트 코어)
       const playerMini = proj.worldToMini(player.position.x, player.position.y);
       const pulse = 0.5 + 0.5 * Math.sin(this._pulseTime * 2.2);
@@ -486,6 +538,7 @@
         playerWorldPos: { x: player.position.x, y: player.position.y },
         enemyMarkers,
         bossMarker,
+        escapeMarker,
         itemMarkers
       };
     }

@@ -112,10 +112,12 @@
    * 플레이어 무기 전환, 근접 부채꼴 판정, 원거리 투사체, 쿨다운, 테스트 타겟 피격을 총괄하는 시스템
    */
   class CombatSystem {
-    constructor(initialTargets = []) {
+    constructor(initialTargets = [], options = {}) {
       this.maxUpgradeLevel = WEAPON_UPGRADE_CONFIG.maxLevel;
       this.damageBonusPerLevel = WEAPON_UPGRADE_CONFIG.damageBonusPerLevel;
       this.upgradeLevel = 0;
+      // Phase 12: 영구 공격력 강화 보너스 (모든 무기 기본 데미지에 합산)
+      this.permanentAttackBonus = Math.max(0, Number(options.permanentAttackBonus) || 0);
 
       // 슬롯별 런타임 무기 상태 초기화 (기본 데미지와 강화 단계를 별도 분리 관리)
       this.weapons = {
@@ -192,7 +194,7 @@
         return 0;
       }
       return CombatSystem.calculateUpgradedDamage(
-        ws.baseDamage,
+        ws.baseDamage + (this.permanentAttackBonus || 0),
         ws.upgradeLevel,
         this.damageBonusPerLevel
       );
@@ -694,7 +696,8 @@
         weaponId: cfg.id,
         weaponName: cfg.name,
         attackModeText: cfg.attackModeText,
-        baseDamage: ws.baseDamage,
+        baseDamage: ws.baseDamage + (this.permanentAttackBonus || 0),
+        permanentAttackBonus: this.permanentAttackBonus || 0,
         damage: this.getWeaponDamage(this.currentSlot),
         upgradeLevel: ws.upgradeLevel,
         maxUpgradeLevel: this.maxUpgradeLevel,
