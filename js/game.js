@@ -28,6 +28,9 @@
       this.renderer = null;
       this.minimap = PO.Minimap ? new PO.Minimap() : null;
       this.ui = new PO.UIManager();
+      this.meta = PO.metaProgression || null;
+      this.runRewardAwarded = false;
+      this.lastRunReward = null;
 
       // 마우스 월드 조준 좌표 (마우스 입력 전에는 null)
       this.aimWorld = null;
@@ -35,9 +38,10 @@
       this.isVictory = false;
       this.runTime = 0;
       this.ui.hideVictory();
-      this.isVictory = false;
-      this.runTime = 0;
       this.escapeDevice = null;
+
+      // 영구 강화 상점 초기화
+      this.ui.initShop(this.meta);
 
       // 랜덤 맵 생성 및 플레이어, 피해 시스템, 적, 전투, 아이템 등 런타임 상태 초기화
       this._initRunState({ seed: startupOptions.initialSeed });
@@ -144,8 +148,10 @@
 
       this.isGameOver = false;
       this.isVictory = false;
+      this.runRewardAwarded = false;
       this.runTime = 0;
       this.ui.hideVictory();
+      this.ui.setGameOver(false);
 
       // 1. 새로운 맵 생성 및 렌더러·미니맵의 이전 맵 잔여 상태 초기화
       this.map = this._createMapForRun(requestedSeed);
@@ -162,13 +168,21 @@
         this.minimap.reset();
       }
 
+      // Phase 12: 영구 강화 수치 적용 (최대 체력 증가, 대시 쿨다운 감소, 공격력 증가)
+      const metaModifiers = this.meta
+        ? this.meta.getModifiers()
+        : { maxHpBonus: 0, attackBonus: 0, dashCooldownReduction: 0 };
+      const baseMaxHp = 100 + (metaModifiers.maxHpBonus || 0);
+      const dashCooldown = Math.max(0.4, 1.2 - (metaModifiers.dashCooldownReduction || 0));
+
       // 2. 시작 방 스폰 지점에 플레이어 생성 및 주변 시스템 초기화
       this.player = new PO.Player({
         x: this.map.spawnPoint.x,
         y: this.map.spawnPoint.y,
         speed: 260,
-        hp: 100,
-        maxHp: 100
+        hp: baseMaxHp,
+        maxHp: baseMaxHp,
+        dashCooldown: dashCooldown
       });
 
       this.playerDamage = new PO.PlayerDamageSystem({
@@ -190,7 +204,11 @@
         ? new PO.CombatRoomSystem(this.map, this.enemies, {}, this.boss)
         : null;
 
-      this.combat = new PO.CombatSystem(PO.CombatSystem.createDefaultTargets(this.map));
+      // Phase 12: 영구 공격력 보너스를 CombatSystem에 주입
+      this.combat = new PO.CombatSystem(
+        PO.CombatSystem.createDefaultTargets(this.map),
+        { permanentAttackBonus: metaModifiers.attackBonus || 0 }
+      );
 
       this.items = PO.ItemSystem
         ? new PO.ItemSystem(PO.ItemSystem.createDefaultMapItems(this.map))
@@ -248,6 +266,7 @@
 
     /**
      * 플레이어 사망(체력 0 이하) 전환 시 입력 초기화 및 게임 오버 상태 활성화
+     * Phase 12: 이번 런 처치 적 수 기반 야근 수당 계산 및 1회 지급
      */
     _handlePlayerDeath() {
       if (this.isGameOver || this.isVictory) {
@@ -255,10 +274,36 @@
       }
       this.isGameOver = true;
       this.input.reset();
+
+      const kills =
+        (this.enemies && typeof this.enemies.getDefeatedCount === 'function'
+          ? this.enemies.getDefeatedCount()
+          : 0) ||
+        (this.combatRooms && typeof this.combatRooms.getTotalDefeatedEnemies === 'function'
+          ? this.combatRooms.getTotalDefeatedEnemies()
+          : 0);
+
+      let rewardData = {
+        totalReward: 0,
+        newBalance: this.meta ? this.meta.getCurrency() : 0
+      };
+
+      if (!this.runRewardAwarded && this.meta) {
+        this.runRewardAwarded = true;
+        rewardData = this.meta.awardRunReward(kills, false, false);
+      }
+      this.lastRunReward = rewardData;
+
+      this.ui.setGameOver(true, {
+        kills,
+        earnedCurrency: rewardData.totalReward,
+        totalCurrency: rewardData.newBalance
+      });
     }
 
     /**
-     * Phase 11: 탈출 장치와 상호작용하여 런을 성공적으로 완료(퇴근)했을 때 호출
+     * Phase 11 & 12: 탈출 장치와 상호작용하여 런을 성공적으로 완료(퇴근)했을 때 호출
+     * 보스 처치 보상 + 적 처치 보상 합산 야근 수당 지급
      */
     _handleVictory() {
       if (this.isVictory || this.isGameOver) {
@@ -289,6 +334,17 @@
 
       const bossKilled = Boolean(this.boss && (this.boss.isDead() || this.boss.hp <= 0));
 
+      let rewardData = {
+        totalReward: 0,
+        newBalance: this.meta ? this.meta.getCurrency() : 0
+      };
+
+      if (!this.runRewardAwarded && this.meta) {
+        this.runRewardAwarded = true;
+        rewardData = this.meta.awardRunReward(kills, bossKilled, true);
+      }
+      this.lastRunReward = rewardData;
+
       let equipmentStr = '기본 장비';
       if (this.combat) {
         const upLevel = this.combat.upgradeLevel || 0;
@@ -303,7 +359,9 @@
         runTime: formattedTime,
         kills,
         bossKilled,
-        equipment: equipmentStr
+        equipment: equipmentStr,
+        earnedCurrency: rewardData.totalReward,
+        totalCurrency: rewardData.newBalance
       });
     }
 
@@ -419,6 +477,15 @@
     }
 
     update(dt) {
+      if (this.ui && this.ui.isShopOpen()) {
+        // 상점 모달이 열려 있는 동안에는 인게임 조작 및 런타임 진행 일시 정지
+        this.input.consumeWeaponSwitch();
+        this.input.consumeDashInput();
+        this.input.consumeInteractInput();
+        this.input.consumeAttackInput();
+        return;
+      }
+
       if (this.isVictory) {
         // Phase 11: 탈출 성공 화면이 표시된 동안에는 플레이어 이동, 공격, 대시 및 적/보스 이동/공격을 모두 중단
         this.input.consumeWeaponSwitch();
@@ -577,6 +644,11 @@
 
       // 12. 플레이어 피격/회피 플로팅 팝업 및 피격 링 이펙트 갱신
       this.playerDamage.update(dt);
+
+      // 플레이어 체력 소진 시 게임 오버 및 영구 재화 정산 처리
+      if (this.player.isDead && !this.isGameOver) {
+        this._handlePlayerDeath();
+      }
 
       // 13. UI 동기화 (체력 바, 무기 강화 단계, 아이템 알림, 전투 방 HUD, 보스 체력 바, 게임 오버 오버레이)
       const uiInputState = this.isGameOver

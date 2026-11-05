@@ -5,7 +5,8 @@
 (function (global) {
   'use strict';
 
-  const PO = global.PO || (global.PO = {});
+  global.PO = global.PO || {};
+  const PO = global.PO;
 
   /**
    * 영구 메타 프로그레션 설정 상수

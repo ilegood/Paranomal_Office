@@ -191,7 +191,26 @@
           <span class="game-over-badge">OVERTIME FAILED</span>
           <h2 id="game-over-title" class="game-over-title">게임 오버</h2>
           <p class="game-over-desc">체력이 모두 소진되어 야근 중 쓰러졌습니다.</p>
-          <button id="restart-btn" type="button" class="restart-btn">다시 시작</button>
+
+          <div class="game-over-stats-grid">
+            <div class="game-over-stat-item">
+              <span class="game-over-stat-label">처치한 적 수</span>
+              <span id="game-over-stat-kills" class="game-over-stat-value">0마리</span>
+            </div>
+            <div class="game-over-stat-item">
+              <span class="game-over-stat-label">이번 런 획득 수당</span>
+              <span id="game-over-stat-reward" class="game-over-stat-value text-accent">+₩0</span>
+            </div>
+            <div class="game-over-stat-item game-over-stat-item-full">
+              <span class="game-over-stat-label">총 보유 야근 수당</span>
+              <span id="game-over-stat-total" class="game-over-stat-value">₩0</span>
+            </div>
+          </div>
+
+          <div class="overlay-button-group">
+            <button id="game-over-shop-btn" type="button" class="shop-trigger-btn">사내 복지 강화실</button>
+            <button id="restart-btn" type="button" class="restart-btn">다시 시작</button>
+          </div>
         </div>
       </div>
 
@@ -215,19 +234,56 @@
               <span class="victory-stat-label">보스 처치 여부</span>
               <span id="victory-stat-boss" class="victory-stat-value">야근 감독관 처치 완료</span>
             </div>
+            <div class="victory-stat-item">
+              <span class="victory-stat-label">이번 런 획득 수당</span>
+              <span id="victory-stat-reward" class="victory-stat-value text-emerald">+₩0</span>
+            </div>
             <div class="victory-stat-item victory-stat-item-full">
               <span class="victory-stat-label">장비 및 강화 상태</span>
               <span id="victory-stat-equipment" class="victory-stat-value">스테이플러 / 권총</span>
             </div>
+            <div class="victory-stat-item victory-stat-item-full">
+              <span class="victory-stat-label">총 보유 야근 수당</span>
+              <span id="victory-stat-total-currency" class="victory-stat-value">₩0</span>
+            </div>
           </div>
 
-          <button id="victory-restart-btn" type="button" class="restart-btn victory-restart-btn">새로운 런 시작</button>
+          <div class="overlay-button-group">
+            <button id="victory-shop-btn" type="button" class="shop-trigger-btn victory-shop-btn">사내 복지 강화실</button>
+            <button id="victory-restart-btn" type="button" class="restart-btn victory-restart-btn">새로운 런 시작</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Phase 12: 영구 강화 상점(사내 복지 강화실) 모달 -->
+      <div id="shop-modal" class="shop-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="shop-title" hidden>
+        <div class="hud-card shop-card">
+          <header class="shop-header">
+            <div class="shop-title-wrap">
+              <span class="shop-badge">PERMANENT UPGRADE</span>
+              <h2 id="shop-title" class="shop-title">사내 복지 강화실</h2>
+              <p class="shop-subtitle">야근 수당을 투자해 영구 능력치를 강화하세요. (새 런부터 적용)</p>
+            </div>
+            <div class="shop-balance-chip">
+              <span class="shop-balance-label">보유 야근 수당</span>
+              <span id="shop-currency-val" class="shop-balance-val">₩0</span>
+            </div>
+          </header>
+
+          <div id="shop-items-list" class="shop-items-grid">
+            <!-- JS에서 3개 강화 항목 카드가 동적으로 렌더링됨 -->
+          </div>
+
+          <footer class="shop-footer">
+            <button id="shop-close-btn" type="button" class="shop-close-btn">닫기 (ESC)</button>
+          </footer>
         </div>
       </div>
     </div>
   </main>
 
   <!-- 로컬 파일(file://)에서도 별도 서버 없이 실행되도록 순차 스크립트로 로드 -->
+  <script src="js/meta-progression.js"></script>
   <script src="js/input.js"></script>
   <script src="js/map.js"></script>
   <script src="js/map-generator.js"></script>

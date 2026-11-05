@@ -1083,3 +1083,428 @@ body {
   color: #6ee7b7;
 }
 
+/* ==========================================================================
+   Phase 12: 영구 재화(야근 수당) 및 영구 강화 상점 스타일
+   ========================================================================== */
+
+/* HUD 상단 야근 수당 칩 */
+.hud-currency-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 6px 10px;
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.hud-currency-chip .currency-icon {
+  font-size: 14px;
+}
+
+.hud-currency-chip .currency-info {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+
+.hud-currency-chip .currency-label {
+  font-size: 9.5px;
+  font-weight: 600;
+  color: #94a3b8;
+  letter-spacing: 0.04em;
+}
+
+.hud-currency-chip .currency-value {
+  font-size: 13px;
+  font-weight: 800;
+  color: #fbbf24;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 8px rgba(245, 158, 11, 0.3);
+}
+
+.hud-shop-btn {
+  margin-left: auto;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fef3c7;
+  background: linear-gradient(180deg, #d97706 0%, #b45309 100%);
+  border: 1px solid #f59e0b;
+  border-bottom: 2px solid #92400e;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.hud-shop-btn:hover {
+  filter: brightness(1.15);
+  transform: translateY(-1px);
+}
+
+.hud-shop-btn:active {
+  transform: translateY(1px);
+  border-bottom-width: 1px;
+}
+
+/* 게임 오버 통계 그리드 & 오버레이 버튼 그룹 */
+.game-over-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  width: 100%;
+  margin: 14px 0 16px 0;
+}
+
+.game-over-stat-item {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 12px;
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: 6px;
+  text-align: left;
+}
+
+.game-over-stat-item-full {
+  grid-column: span 2;
+  border-color: rgba(245, 158, 11, 0.3);
+  background: rgba(30, 27, 24, 0.55);
+}
+
+.game-over-stat-label {
+  font-size: 10.5px;
+  color: #94a3b8;
+  margin-bottom: 2px;
+}
+
+.game-over-stat-value {
+  font-size: 14px;
+  font-weight: 800;
+  color: #f8fafc;
+  font-variant-numeric: tabular-nums;
+}
+
+.text-accent {
+  color: #fbbf24 !important;
+}
+
+.text-emerald {
+  color: #34d399 !important;
+}
+
+.overlay-button-group {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  justify-content: center;
+}
+
+.shop-trigger-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 18px;
+  font-size: 13px;
+  font-weight: 800;
+  color: #fffbeb;
+  background: linear-gradient(180deg, #d97706 0%, #b45309 100%);
+  border: 1px solid #f59e0b;
+  border-bottom: 3px solid #78350f;
+  border-radius: 8px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(180, 83, 9, 0.35);
+  transition: transform 0.08s ease, filter 0.12s ease;
+}
+
+.shop-trigger-btn:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+
+.shop-trigger-btn:active {
+  transform: translateY(2px);
+  border-bottom-width: 1px;
+}
+
+/* 영구 강화 상점 (사내 복지 강화실) 모달 */
+.shop-modal-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(3, 7, 18, 0.85);
+  backdrop-filter: blur(8px);
+  z-index: 120;
+  animation: modalFadeIn 0.18s ease-out;
+}
+
+.shop-modal-overlay[hidden] {
+  display: none !important;
+}
+
+.shop-card {
+  width: 90%;
+  max-width: 620px;
+  max-height: 88%;
+  display: flex;
+  flex-direction: column;
+  padding: 24px;
+  background: #0f172a;
+  border: 1.5px solid #334155;
+  border-radius: 14px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.65), 0 0 24px rgba(245, 158, 11, 0.15);
+}
+
+.shop-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #1e293b;
+}
+
+.shop-badge {
+  display: inline-block;
+  padding: 2px 7px;
+  font-size: 9.5px;
+  font-weight: 800;
+  color: #fbbf24;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  border-radius: 4px;
+  letter-spacing: 0.08em;
+  margin-bottom: 4px;
+}
+
+.shop-title {
+  font-size: 20px;
+  font-weight: 900;
+  color: #f8fafc;
+  margin: 0 0 4px 0;
+}
+
+.shop-subtitle {
+  font-size: 11.5px;
+  color: #94a3b8;
+  margin: 0;
+}
+
+.shop-balance-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  padding: 6px 14px;
+  background: rgba(30, 27, 24, 0.7);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  border-radius: 8px;
+}
+
+.shop-balance-label {
+  font-size: 10px;
+  color: #cbd5e1;
+}
+
+.shop-balance-val {
+  font-size: 17px;
+  font-weight: 900;
+  color: #fbbf24;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 10px rgba(245, 158, 11, 0.45);
+}
+
+.shop-items-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 18px 0;
+  overflow-y: auto;
+  max-height: 380px;
+  padding-right: 4px;
+}
+
+/* 개별 강화 항목 카드 */
+.shop-item-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  background: #1e293b;
+  border: 1.5px solid #334155;
+  border-radius: 10px;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.shop-item-card:hover {
+  border-color: #475569;
+  background: #243044;
+}
+
+.shop-item-card.is-max {
+  border-color: #059669;
+  background: rgba(6, 78, 59, 0.18);
+}
+
+.shop-item-icon {
+  font-size: 24px;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid #334155;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.shop-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.shop-item-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.shop-item-name {
+  font-size: 14px;
+  font-weight: 800;
+  color: #f1f5f9;
+}
+
+.shop-item-level-badge {
+  font-size: 10.5px;
+  font-weight: 800;
+  padding: 1px 6px;
+  background: #0f172a;
+  border: 1px solid #475569;
+  border-radius: 4px;
+  color: #38bdf8;
+}
+
+.shop-item-card.is-max .shop-item-level-badge {
+  border-color: #10b981;
+  color: #34d399;
+}
+
+/* 5칸 프로그레스 닷 */
+.shop-item-dots {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.shop-dot {
+  width: 14px;
+  height: 6px;
+  border-radius: 2px;
+  background: #334155;
+}
+
+.shop-dot.is-filled {
+  background: #38bdf8;
+  box-shadow: 0 0 6px rgba(56, 189, 248, 0.4);
+}
+
+.shop-item-card.is-max .shop-dot.is-filled {
+  background: #34d399;
+  box-shadow: 0 0 6px rgba(52, 211, 153, 0.4);
+}
+
+.shop-item-desc {
+  font-size: 11px;
+  color: #94a3b8;
+  margin: 0 0 3px 0;
+}
+
+.shop-item-effect {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+
+.shop-item-next-effect {
+  font-size: 10.5px;
+  color: #38bdf8;
+  margin-left: 4px;
+}
+
+.shop-buy-btn {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 96px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 800;
+  color: #ffffff;
+  background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%);
+  border: 1px solid #3b82f6;
+  border-bottom: 3px solid #1e40af;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  flex-shrink: 0;
+}
+
+.shop-buy-btn:not(:disabled):hover {
+  filter: brightness(1.15);
+  transform: translateY(-1px);
+}
+
+.shop-buy-btn:not(:disabled):active {
+  transform: translateY(2px);
+  border-bottom-width: 1px;
+}
+
+.shop-buy-btn:disabled {
+  background: #334155;
+  border-color: #475569;
+  border-bottom-color: #1e293b;
+  color: #64748b;
+  cursor: not-allowed;
+  filter: none;
+  transform: none;
+}
+
+.shop-buy-btn.is-max {
+  background: rgba(16, 185, 129, 0.2);
+  border-color: #059669;
+  border-bottom-color: #047857;
+  color: #6ee7b7;
+}
+
+.shop-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 14px;
+  border-top: 1px solid #1e293b;
+}
+
+.shop-close-btn {
+  padding: 8px 20px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #cbd5e1;
+  background: #1e293b;
+  border: 1px solid #475569;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.shop-close-btn:hover {
+  background: #334155;
+  color: #ffffff;
+}
+
+

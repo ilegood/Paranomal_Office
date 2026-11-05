@@ -46,6 +46,27 @@
       this.victoryEquipmentEl = document.getElementById('victory-stat-equipment');
       this.victoryRestartBtnEl = document.getElementById('victory-restart-btn');
 
+      // Phase 12: 영구 재화(야근 수당) 및 영구 강화 상점 관련 요소
+      this.hudCurrencyValEl = document.getElementById('hud-currency-val');
+      this.hudOpenShopBtnEl = document.getElementById('hud-open-shop-btn');
+
+      this.gameOverKillsEl = document.getElementById('game-over-stat-kills');
+      this.gameOverRewardEl = document.getElementById('game-over-stat-reward');
+      this.gameOverTotalEl = document.getElementById('game-over-stat-total');
+      this.gameOverShopBtnEl = document.getElementById('game-over-shop-btn');
+
+      this.victoryRewardEl = document.getElementById('victory-stat-reward');
+      this.victoryTotalEl = document.getElementById('victory-stat-total-currency');
+      this.victoryShopBtnEl = document.getElementById('victory-shop-btn');
+
+      this.shopModalEl = document.getElementById('shop-modal');
+      this.shopCurrencyValEl = document.getElementById('shop-currency-val');
+      this.shopItemsListEl = document.getElementById('shop-items-list');
+      this.shopCloseBtnEl = document.getElementById('shop-close-btn');
+
+      this.meta = PO.metaProgression || null;
+      this.onUpgradePurchased = null;
+
       this.keyEls = {
         up: document.getElementById('key-w'),
         left: document.getElementById('key-a'),
@@ -132,7 +153,184 @@
     }
 
     /**
-     * Phase 11: 탈출 성공(Victory) 결과 화면 표시
+     * Phase 12: 영구 강화 상점(사내 복지 강화실) 시스템 및 이벤트 바인딩
+     */
+    initShop(metaProgression = null, onUpgradePurchased = null) {
+      this.meta = metaProgression || PO.metaProgression;
+      this.onUpgradePurchased = onUpgradePurchased;
+
+      if (this.hudOpenShopBtnEl) {
+        this.hudOpenShopBtnEl.addEventListener('click', () => this.openShop());
+      }
+      if (this.gameOverShopBtnEl) {
+        this.gameOverShopBtnEl.addEventListener('click', () => this.openShop());
+      }
+      if (this.victoryShopBtnEl) {
+        this.victoryShopBtnEl.addEventListener('click', () => this.openShop());
+      }
+      if (this.shopCloseBtnEl) {
+        this.shopCloseBtnEl.addEventListener('click', () => this.closeShop());
+      }
+
+      // 모달 바깥 어두운 배경 클릭 시 닫기
+      if (this.shopModalEl) {
+        this.shopModalEl.addEventListener('click', (e) => {
+          if (e.target === this.shopModalEl) {
+            this.closeShop();
+          }
+        });
+      }
+
+      // ESC 키 입력 시 상점 닫기 지원
+      window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && this.isShopOpen()) {
+          this.closeShop();
+          e.stopPropagation();
+        }
+      });
+
+      // 데이터 변경 리스너 등록
+      if (this.meta && typeof this.meta.subscribe === 'function') {
+        this.meta.subscribe(() => {
+          this.updateCurrencyDisplay();
+          if (this.isShopOpen()) {
+            this.renderShop();
+          }
+        });
+      }
+
+      this.updateCurrencyDisplay();
+    }
+
+    /**
+     * 현재 보유 야근 수당 화면 갱신
+     */
+    updateCurrencyDisplay() {
+      const balance = this.meta ? this.meta.getCurrency() : 0;
+      const formatted = `₩${balance.toLocaleString()}`;
+
+      if (this.hudCurrencyValEl) {
+        this.hudCurrencyValEl.textContent = formatted;
+      }
+      if (this.shopCurrencyValEl) {
+        this.shopCurrencyValEl.textContent = formatted;
+      }
+    }
+
+    /**
+     * 상점 모달 열기
+     */
+    openShop() {
+      if (this.shopModalEl) {
+        this.shopModalEl.hidden = false;
+        this.updateCurrencyDisplay();
+        this.renderShop();
+      }
+    }
+
+    /**
+     * 상점 모달 닫기
+     */
+    closeShop() {
+      if (this.shopModalEl) {
+        this.shopModalEl.hidden = true;
+      }
+    }
+
+    /**
+     * 상점 모달 열림 여부
+     */
+    isShopOpen() {
+      return Boolean(this.shopModalEl && !this.shopModalEl.hidden);
+    }
+
+    /**
+     * 상점 항목 목록 DOM 동적 렌더링
+     */
+    renderShop() {
+      if (!this.shopItemsListEl || !this.meta || !PO.META_CONFIG) {
+        return;
+      }
+
+      const upgradesDef = PO.META_CONFIG.UPGRADES;
+      const upgradeIds = Object.keys(upgradesDef);
+      const currentBalance = this.meta.getCurrency();
+
+      this.shopItemsListEl.innerHTML = '';
+
+      upgradeIds.forEach((id) => {
+        const def = upgradesDef[id];
+        const currentLvl = this.meta.getUpgradeLevel(id);
+        const maxLvl = def.maxLevel;
+        const isMax = currentLvl >= maxLvl;
+        const nextCost = this.meta.getUpgradeCost(id);
+        const canAfford = !isMax && currentBalance >= nextCost;
+
+        const card = document.createElement('div');
+        card.className = `shop-item-card ${isMax ? 'is-max' : ''}`;
+        card.setAttribute('data-upgrade-id', id);
+
+        // 5칸 프로그레스 닷 생성
+        let dotsHtml = '';
+        for (let i = 1; i <= maxLvl; i++) {
+          dotsHtml += `<span class="shop-dot ${i <= currentLvl ? 'is-filled' : ''}"></span>`;
+        }
+
+        const effectText = def.getEffectText(currentLvl);
+        const nextEffectText = def.getNextEffectText(currentLvl);
+
+        let buttonText = '';
+        let buttonDisabled = false;
+        let buttonClass = 'shop-buy-btn';
+
+        if (isMax) {
+          buttonText = 'MAX (완료)';
+          buttonDisabled = true;
+          buttonClass += ' is-max';
+        } else {
+          buttonText = `₩${nextCost.toLocaleString()} 구매`;
+          buttonDisabled = !canAfford;
+        }
+
+        card.innerHTML = `
+          <div class="shop-item-icon" aria-hidden="true">${def.icon}</div>
+          <div class="shop-item-info">
+            <div class="shop-item-title-row">
+              <span class="shop-item-name">${def.name}</span>
+              <span class="shop-item-level-badge">Lv.${currentLvl} / ${maxLvl}</span>
+            </div>
+            <div class="shop-item-dots" aria-hidden="true">${dotsHtml}</div>
+            <p class="shop-item-desc">${def.desc}</p>
+            <div class="shop-item-effect">
+              <span>${effectText}</span>
+              ${!isMax ? `<span class="shop-item-next-effect">▶ 다음: ${nextEffectText}</span>` : ''}
+            </div>
+          </div>
+          <button type="button" class="${buttonClass}" ${buttonDisabled ? 'disabled' : ''} data-buy-id="${id}">
+            ${buttonText}
+          </button>
+        `;
+
+        const buyBtn = card.querySelector(`[data-buy-id="${id}"]`);
+        if (buyBtn && !buttonDisabled) {
+          buyBtn.addEventListener('click', () => {
+            const res = this.meta.purchaseUpgrade(id);
+            if (res.success) {
+              this.updateCurrencyDisplay();
+              this.renderShop();
+              if (typeof this.onUpgradePurchased === 'function') {
+                this.onUpgradePurchased(id, res);
+              }
+            }
+          });
+        }
+
+        this.shopItemsListEl.appendChild(card);
+      });
+    }
+
+    /**
+     * Phase 11 & 12: 탈출 성공(Victory) 결과 화면 표시
      */
     showVictory(stats = {}) {
       if (this.victoryTimeEl) {
@@ -149,9 +347,21 @@
       if (this.victoryEquipmentEl) {
         this.victoryEquipmentEl.textContent = stats.equipment || '기본 장비';
       }
+
+      // Phase 12: 이번 런 획득 수당 및 총 보유 수당 표시
+      if (this.victoryRewardEl) {
+        const rewardAmt = stats.earnedCurrency ?? 0;
+        this.victoryRewardEl.textContent = `+₩${rewardAmt.toLocaleString()}`;
+      }
+      if (this.victoryTotalEl) {
+        const totalAmt = stats.totalCurrency ?? (this.meta ? this.meta.getCurrency() : 0);
+        this.victoryTotalEl.textContent = `₩${totalAmt.toLocaleString()}`;
+      }
+
       if (this.victoryOverlayEl) {
         this.victoryOverlayEl.hidden = false;
       }
+      this.updateCurrencyDisplay();
     }
 
     /**
@@ -164,9 +374,9 @@
     }
 
     /**
-     * 게임 오버 오버레이 표시 여부 제어
+     * 게임 오버 오버레이 표시 여부 제어 및 Phase 12 통계 갱신
      */
-    setGameOver(isGameOver) {
+    setGameOver(isGameOver, stats = {}) {
       const next = Boolean(isGameOver);
       if (next === this._lastGameOver && this.gameOverOverlayEl) {
         return;
@@ -174,6 +384,20 @@
       this._lastGameOver = next;
       if (this.gameOverOverlayEl) {
         this.gameOverOverlayEl.hidden = !next;
+      }
+
+      if (next) {
+        if (this.gameOverKillsEl && stats.kills !== undefined) {
+          this.gameOverKillsEl.textContent = `${stats.kills}마리`;
+        }
+        if (this.gameOverRewardEl && stats.earnedCurrency !== undefined) {
+          this.gameOverRewardEl.textContent = `+₩${stats.earnedCurrency.toLocaleString()}`;
+        }
+        if (this.gameOverTotalEl) {
+          const totalAmt = stats.totalCurrency ?? (this.meta ? this.meta.getCurrency() : 0);
+          this.gameOverTotalEl.textContent = `₩${totalAmt.toLocaleString()}`;
+        }
+        this.updateCurrencyDisplay();
       }
     }
 
