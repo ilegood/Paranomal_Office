@@ -40,8 +40,14 @@
       this.ui.hideVictory();
       this.escapeDevice = null;
 
-      // 영구 강화 상점 초기화
+      // 영구 강화 상점 및 캐릭터 선택 시스템 초기화
+      this.characterSystem = PO.characterSystem || null;
       this.ui.initShop(this.meta);
+      this.ui.initCharacterSelect(this.characterSystem, this.meta, (charId, action) => {
+        if (action === 'select') {
+          this._applyCurrentCharacterModifiers();
+        }
+      });
 
       // 랜덤 맵 생성 및 플레이어, 피해 시스템, 적, 전투, 아이템 등 런타임 상태 초기화
       this._initRunState({ seed: startupOptions.initialSeed });
@@ -168,12 +174,24 @@
         this.minimap.reset();
       }
 
-      // Phase 12: 영구 강화 수치 적용 (최대 체력 증가, 대시 쿨다운 감소, 공격력 증가)
+      // Phase 12 & 13: 영구 강화 수치 및 선택된 캐릭터 고유 능력치 결합 적용
       const metaModifiers = this.meta
         ? this.meta.getModifiers()
         : { maxHpBonus: 0, attackBonus: 0, dashCooldownReduction: 0 };
+
+      const charModifiers = this.characterSystem
+        ? this.characterSystem.getEffectiveModifiers()
+        : { meleeDamageMultiplier: 1.0, rangedDamageMultiplier: 1.0, dashCooldownMultiplier: 1.0 };
+
       const baseMaxHp = 100 + (metaModifiers.maxHpBonus || 0);
-      const dashCooldown = Math.max(0.4, 1.2 - (metaModifiers.dashCooldownReduction || 0));
+
+      // 대시 쿨다운 계산: (기본 1.20s - 영구강화 감소량) * 캐릭터 고유 대시 배율
+      const baseDashCooldown = 1.20;
+      const metaDashReduction = metaModifiers.dashCooldownReduction || 0;
+      const cooldownAfterMeta = Math.max(0.4, baseDashCooldown - metaDashReduction);
+      const finalDashCooldown = Number(
+        (cooldownAfterMeta * (charModifiers.dashCooldownMultiplier || 1.0)).toFixed(2)
+      );
 
       // 2. 시작 방 스폰 지점에 플레이어 생성 및 주변 시스템 초기화
       this.player = new PO.Player({
@@ -182,7 +200,7 @@
         speed: 260,
         hp: baseMaxHp,
         maxHp: baseMaxHp,
-        dashCooldown: dashCooldown
+        dashCooldown: finalDashCooldown
       });
 
       this.playerDamage = new PO.PlayerDamageSystem({
@@ -204,10 +222,14 @@
         ? new PO.CombatRoomSystem(this.map, this.enemies, {}, this.boss)
         : null;
 
-      // Phase 12: 영구 공격력 보너스를 CombatSystem에 주입
+      // Phase 12 & 13: 영구 공격력 보너스 및 캐릭터 고유 공격력 배율(퇴마 담당 근접 +20%)을 CombatSystem에 주입
       this.combat = new PO.CombatSystem(
         PO.CombatSystem.createDefaultTargets(this.map),
-        { permanentAttackBonus: metaModifiers.attackBonus || 0 }
+        {
+          permanentAttackBonus: metaModifiers.attackBonus || 0,
+          meleeDamageMultiplier: charModifiers.meleeDamageMultiplier || 1.0,
+          rangedDamageMultiplier: charModifiers.rangedDamageMultiplier || 1.0
+        }
       );
 
       this.items = PO.ItemSystem
@@ -400,6 +422,35 @@
       this.render();
     }
 
+    /**
+     * Phase 13: 선택된 캐릭터의 고유 능력치(대시 쿨다운, 근접 공격력)를 활성 플레이어 및 전투 시스템에 실시간 동기화
+     */
+    _applyCurrentCharacterModifiers() {
+      if (!this.player || this.player.isDead) return;
+
+      const metaModifiers = this.meta
+        ? this.meta.getModifiers()
+        : { maxHpBonus: 0, attackBonus: 0, dashCooldownReduction: 0 };
+
+      const charModifiers = this.characterSystem
+        ? this.characterSystem.getEffectiveModifiers()
+        : { meleeDamageMultiplier: 1.0, rangedDamageMultiplier: 1.0, dashCooldownMultiplier: 1.0 };
+
+      const baseDashCooldown = 1.20;
+      const metaDashReduction = metaModifiers.dashCooldownReduction || 0;
+      const cooldownAfterMeta = Math.max(0.4, baseDashCooldown - metaDashReduction);
+      const finalDashCooldown = Number(
+        (cooldownAfterMeta * (charModifiers.dashCooldownMultiplier || 1.0)).toFixed(2)
+      );
+
+      this.player.dash.cooldownTotal = finalDashCooldown;
+
+      if (this.combat) {
+        this.combat.meleeDamageMultiplier = charModifiers.meleeDamageMultiplier || 1.0;
+        this.combat.rangedDamageMultiplier = charModifiers.rangedDamageMultiplier || 1.0;
+      }
+    }
+
     start() {
       if (this.isRunning) {
         return;
@@ -477,8 +528,8 @@
     }
 
     update(dt) {
-      if (this.ui && this.ui.isShopOpen()) {
-        // 상점 모달이 열려 있는 동안에는 인게임 조작 및 런타임 진행 일시 정지
+      if (this.ui && (this.ui.isShopOpen() || this.ui.isCharacterModalOpen())) {
+        // 상점 또는 캐릭터 인사발령 모달이 열려 있는 동안에는 인게임 조작 및 런타임 진행 일시 정지
         this.input.consumeWeaponSwitch();
         this.input.consumeDashInput();
         this.input.consumeInteractInput();

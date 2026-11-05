@@ -118,6 +118,9 @@
       this.upgradeLevel = 0;
       // Phase 12: 영구 공격력 강화 보너스 (모든 무기 기본 데미지에 합산)
       this.permanentAttackBonus = Math.max(0, Number(options.permanentAttackBonus) || 0);
+      // Phase 13: 캐릭터 고유 공격력 배율 (퇴마 담당의 근접 +20% 등)
+      this.meleeDamageMultiplier = Number(options.meleeDamageMultiplier) || 1.0;
+      this.rangedDamageMultiplier = Number(options.rangedDamageMultiplier) || 1.0;
 
       // 슬롯별 런타임 무기 상태 초기화 (기본 데미지와 강화 단계를 별도 분리 관리)
       this.weapons = {
@@ -193,11 +196,16 @@
       if (!ws) {
         return 0;
       }
-      return CombatSystem.calculateUpgradedDamage(
+      const rawDmg = CombatSystem.calculateUpgradedDamage(
         ws.baseDamage + (this.permanentAttackBonus || 0),
         ws.upgradeLevel,
         this.damageBonusPerLevel
       );
+      // Phase 13: 캐릭터 고유 공격력 배율 (근접/원거리 독립 적용)
+      const multiplier = slot === 1
+        ? (this.meleeDamageMultiplier || 1.0)
+        : (this.rangedDamageMultiplier || 1.0);
+      return Math.round(rawDmg * multiplier);
     }
 
     /**

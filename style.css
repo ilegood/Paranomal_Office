@@ -1507,4 +1507,417 @@ body {
   color: #ffffff;
 }
 
+/* ==========================================================================
+   Phase 13: 사원 인사 발령 (캐릭터 선택 및 해금) 모달 & HUD 스타일
+   ========================================================================== */
+
+/* HUD 상단 출근 캐릭터 칩 */
+.hud-character-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 6px 10px;
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.hud-character-chip .character-icon {
+  font-size: 14px;
+}
+
+.hud-character-chip .character-info {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+
+.hud-character-chip .character-label {
+  font-size: 9.5px;
+  font-weight: 600;
+  color: #94a3b8;
+  letter-spacing: 0.04em;
+}
+
+.hud-character-chip .character-value {
+  font-size: 12.5px;
+  font-weight: 800;
+  color: #38bdf8;
+  text-shadow: 0 0 8px rgba(56, 189, 248, 0.3);
+}
+
+.hud-char-btn {
+  margin-left: auto;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #e0f2fe;
+  background: linear-gradient(180deg, #0284c7 0%, #0369a1 100%);
+  border: 1px solid #38bdf8;
+  border-bottom: 2px solid #075985;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.hud-char-btn:hover {
+  filter: brightness(1.15);
+  transform: translateY(-1px);
+}
+
+.hud-char-btn:active {
+  transform: translateY(1px);
+  border-bottom-width: 1px;
+}
+
+/* 오버레이 내 캐릭터 선택 버튼 */
+.char-trigger-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 18px;
+  font-size: 13px;
+  font-weight: 800;
+  color: #f0f9ff;
+  background: linear-gradient(180deg, #0284c7 0%, #0369a1 100%);
+  border: 1px solid #38bdf8;
+  border-bottom: 3px solid #075985;
+  border-radius: 8px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(2, 132, 199, 0.35);
+  transition: transform 0.08s ease, filter 0.12s ease;
+}
+
+.char-trigger-btn:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+
+.char-trigger-btn:active {
+  transform: translateY(2px);
+  border-bottom-width: 1px;
+}
+
+/* 캐릭터 선택 모달 */
+.char-modal-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(3, 7, 18, 0.85);
+  backdrop-filter: blur(8px);
+  z-index: 125;
+  animation: modalFadeIn 0.18s ease-out;
+}
+
+.char-modal-overlay[hidden] {
+  display: none !important;
+}
+
+.char-card {
+  width: 92%;
+  max-width: 660px;
+  max-height: 88%;
+  display: flex;
+  flex-direction: column;
+  padding: 24px;
+  background: #0f172a;
+  border: 1.5px solid #334155;
+  border-radius: 14px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.65), 0 0 24px rgba(56, 189, 248, 0.15);
+}
+
+.char-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #1e293b;
+}
+
+.char-badge {
+  display: inline-block;
+  padding: 2px 7px;
+  font-size: 9.5px;
+  font-weight: 800;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  border-radius: 4px;
+  letter-spacing: 0.08em;
+  margin-bottom: 4px;
+}
+
+.char-title {
+  font-size: 20px;
+  font-weight: 900;
+  color: #f8fafc;
+  margin: 0 0 4px 0;
+}
+
+.char-subtitle {
+  font-size: 11.5px;
+  color: #94a3b8;
+  margin: 0;
+}
+
+.char-balance-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  padding: 6px 14px;
+  background: rgba(30, 27, 24, 0.7);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  border-radius: 8px;
+}
+
+.char-balance-label {
+  font-size: 10px;
+  color: #cbd5e1;
+}
+
+.char-balance-val {
+  font-size: 17px;
+  font-weight: 900;
+  color: #fbbf24;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 10px rgba(245, 158, 11, 0.45);
+}
+
+.char-items-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 18px 0;
+  overflow-y: auto;
+  max-height: 380px;
+  padding-right: 4px;
+}
+
+/* 개별 캐릭터 카드 */
+.char-item-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  background: #1e293b;
+  border: 1.5px solid #334155;
+  border-radius: 10px;
+  transition: all 0.15s ease;
+}
+
+.char-item-card:hover {
+  border-color: #475569;
+  background: #243044;
+}
+
+.char-item-card.is-selected {
+  border-color: #38bdf8;
+  background: rgba(14, 165, 233, 0.12);
+  box-shadow: 0 0 16px rgba(56, 189, 248, 0.18);
+}
+
+.char-item-card.is-locked {
+  opacity: 0.82;
+  border-color: #334155;
+  background: #141b2a;
+}
+
+.char-item-icon {
+  font-size: 26px;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid #334155;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+.char-item-card.is-selected .char-item-icon {
+  border-color: #38bdf8;
+}
+
+.char-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.char-item-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 3px;
+}
+
+.char-item-name {
+  font-size: 14.5px;
+  font-weight: 800;
+  color: #f1f5f9;
+}
+
+.char-item-role-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  background: #0f172a;
+  border: 1px solid #475569;
+  border-radius: 4px;
+  color: #94a3b8;
+}
+
+.char-item-status-badge {
+  font-size: 9.5px;
+  font-weight: 800;
+  padding: 1px 6px;
+  border-radius: 4px;
+  letter-spacing: 0.04em;
+}
+
+.char-item-status-badge.is-selected {
+  background: rgba(56, 189, 248, 0.2);
+  border: 1px solid #38bdf8;
+  color: #38bdf8;
+}
+
+.char-item-status-badge.is-unlocked {
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid #059669;
+  color: #34d399;
+}
+
+.char-item-status-badge.is-locked {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid #7f1d1d;
+  color: #f87171;
+}
+
+.char-item-desc {
+  font-size: 11px;
+  color: #94a3b8;
+  margin: 0 0 5px 0;
+  line-height: 1.3;
+}
+
+.char-perk-box {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  background: rgba(15, 23, 42, 0.6);
+  border-radius: 6px;
+}
+
+.char-perk-badge {
+  font-size: 10px;
+  font-weight: 800;
+  color: #fbbf24;
+}
+
+.char-perk-desc {
+  font-size: 11px;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.char-action-btn {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 102px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 800;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  flex-shrink: 0;
+}
+
+/* 현재 선택됨(출근 중) 상태 */
+.char-action-btn.is-active {
+  background: rgba(14, 165, 233, 0.18);
+  border: 1.5px solid #0284c7;
+  color: #38bdf8;
+  cursor: default;
+}
+
+/* 해금되었고 선택 가능한 상태 */
+.char-action-btn.is-select {
+  color: #ffffff;
+  background: linear-gradient(180deg, #0284c7 0%, #0369a1 100%);
+  border: 1px solid #38bdf8;
+  border-bottom: 3px solid #075985;
+}
+
+.char-action-btn.is-select:hover {
+  filter: brightness(1.15);
+  transform: translateY(-1px);
+}
+
+.char-action-btn.is-select:active {
+  transform: translateY(2px);
+  border-bottom-width: 1px;
+}
+
+/* 해금 구매 버튼 (주황색/골드) */
+.char-action-btn.is-unlock {
+  color: #fffbeb;
+  background: linear-gradient(180deg, #d97706 0%, #b45309 100%);
+  border: 1px solid #f59e0b;
+  border-bottom: 3px solid #78350f;
+}
+
+.char-action-btn.is-unlock:not(:disabled):hover {
+  filter: brightness(1.15);
+  transform: translateY(-1px);
+}
+
+.char-action-btn.is-unlock:not(:disabled):active {
+  transform: translateY(2px);
+  border-bottom-width: 1px;
+}
+
+.char-action-btn.is-unlock:disabled {
+  background: #334155;
+  border-color: #475569;
+  border-bottom-color: #1e293b;
+  color: #64748b;
+  cursor: not-allowed;
+  filter: none;
+  transform: none;
+}
+
+.char-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 14px;
+  border-top: 1px solid #1e293b;
+}
+
+.char-close-btn {
+  padding: 8px 20px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #cbd5e1;
+  background: #1e293b;
+  border: 1px solid #475569;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.char-close-btn:hover {
+  background: #334155;
+  color: #ffffff;
+}
+
+
 

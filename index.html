@@ -40,13 +40,23 @@
               </div>
               <button id="hud-open-shop-btn" type="button" class="hud-shop-btn" title="영구 강화 상점 열기">강화실</button>
             </div>
+
+            <!-- Phase 13: 현재 출근 캐릭터 및 캐릭터 선택 메뉴 접근 칩 -->
+            <div class="hud-character-chip" id="hud-character-chip" title="현재 선택된 출근 캐릭터">
+              <span class="character-icon" id="hud-char-icon" aria-hidden="true">👔</span>
+              <div class="character-info">
+                <span class="character-label">출근 직원</span>
+                <span id="hud-char-name" class="character-value">야근 신입</span>
+              </div>
+              <button id="hud-open-char-btn" type="button" class="hud-char-btn" title="캐릭터 선택(인사 발령)">인사발령</button>
+            </div>
           </section>
 
           <!-- 우측 상단: 프로토타입 배지, 실시간 전체 구역 미니맵 및 디버그 시드 표시(기본 숨김) -->
           <div class="hud-top-right">
             <aside class="hud-card prototype-badge">
               <span class="status-dot" aria-hidden="true"></span>
-              <span class="prototype-text">PROTOTYPE · Phase 12 (영구 재화 및 영구 강화)</span>
+              <span class="prototype-text">PROTOTYPE · Phase 13 (캐릭터 선택 및 고유 능력)</span>
             </aside>
 
             <aside id="minimap-panel" class="hud-card minimap-panel" aria-label="전체 구역 미니맵">
@@ -209,6 +219,7 @@
 
           <div class="overlay-button-group">
             <button id="game-over-shop-btn" type="button" class="shop-trigger-btn">사내 복지 강화실</button>
+            <button id="game-over-char-btn" type="button" class="char-trigger-btn">인사 발령 (캐릭터)</button>
             <button id="restart-btn" type="button" class="restart-btn">다시 시작</button>
           </div>
         </div>
@@ -250,6 +261,7 @@
 
           <div class="overlay-button-group">
             <button id="victory-shop-btn" type="button" class="shop-trigger-btn victory-shop-btn">사내 복지 강화실</button>
+            <button id="victory-char-btn" type="button" class="char-trigger-btn victory-char-btn">인사 발령 (캐릭터)</button>
             <button id="victory-restart-btn" type="button" class="restart-btn victory-restart-btn">새로운 런 시작</button>
           </div>
         </div>
@@ -279,11 +291,37 @@
           </footer>
         </div>
       </div>
+
+      <!-- Phase 13: 사원 인사 발령 (캐릭터 선택 및 해금) 모달 -->
+      <div id="character-modal" class="char-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="char-title" hidden>
+        <div class="hud-card char-card">
+          <header class="char-header">
+            <div class="char-title-wrap">
+              <span class="char-badge">PERSONNEL APPOINTMENT</span>
+              <h2 id="char-title" class="char-title">사원 인사 발령 (캐릭터 선택)</h2>
+              <p class="char-subtitle">출근할 직원을 선택하세요. 캐릭터 고유 능력이 새로운 런부터 적용됩니다.</p>
+            </div>
+            <div class="char-balance-chip">
+              <span class="char-balance-label">보유 야근 수당</span>
+              <span id="char-currency-val" class="char-balance-val">₩0</span>
+            </div>
+          </header>
+
+          <div id="char-items-list" class="char-items-grid">
+            <!-- JS에서 3개 캐릭터 카드가 동적으로 렌더링됨 -->
+          </div>
+
+          <footer class="char-footer">
+            <button id="char-close-btn" type="button" class="char-close-btn">닫기 (ESC)</button>
+          </footer>
+        </div>
+      </div>
     </div>
   </main>
 
   <!-- 로컬 파일(file://)에서도 별도 서버 없이 실행되도록 순차 스크립트로 로드 -->
   <script src="js/meta-progression.js"></script>
+  <script src="js/character.js"></script>
   <script src="js/input.js"></script>
   <script src="js/map.js"></script>
   <script src="js/map-generator.js"></script>

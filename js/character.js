@@ -306,3 +306,4 @@
   PO.CharacterSystem = CharacterSystem;
   PO.characterSystem = new CharacterSystem();
 })(window);
+

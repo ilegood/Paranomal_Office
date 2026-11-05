@@ -64,6 +64,22 @@
       this.shopItemsListEl = document.getElementById('shop-items-list');
       this.shopCloseBtnEl = document.getElementById('shop-close-btn');
 
+      // Phase 13: 사원 인사 발령 (캐릭터 선택 및 해금) 관련 요소
+      this.hudCharNameEl = document.getElementById('hud-char-name');
+      this.hudCharIconEl = document.getElementById('hud-char-icon');
+      this.hudOpenCharBtnEl = document.getElementById('hud-open-char-btn');
+
+      this.gameOverCharBtnEl = document.getElementById('game-over-char-btn');
+      this.victoryCharBtnEl = document.getElementById('victory-char-btn');
+
+      this.charModalEl = document.getElementById('character-modal');
+      this.charCurrencyValEl = document.getElementById('char-currency-val');
+      this.charItemsListEl = document.getElementById('char-items-list');
+      this.charCloseBtnEl = document.getElementById('char-close-btn');
+
+      this.characterSystem = PO.characterSystem || null;
+      this.onCharacterChanged = null;
+
       this.meta = PO.metaProgression || null;
       this.onUpgradePurchased = null;
 
@@ -326,6 +342,195 @@
         }
 
         this.shopItemsListEl.appendChild(card);
+      });
+    }
+
+    /**
+     * Phase 13: 사원 인사 발령 (캐릭터 선택 및 해금) 시스템 초기화 및 이벤트 연결
+     */
+    initCharacterSelect(characterSystem = null, metaProgression = null, onCharacterChanged = null) {
+      this.characterSystem = characterSystem || PO.characterSystem;
+      this.meta = metaProgression || PO.metaProgression;
+      this.onCharacterChanged = onCharacterChanged;
+
+      if (this.hudOpenCharBtnEl) {
+        this.hudOpenCharBtnEl.addEventListener('click', () => this.openCharacterModal());
+      }
+      if (this.gameOverCharBtnEl) {
+        this.gameOverCharBtnEl.addEventListener('click', () => this.openCharacterModal());
+      }
+      if (this.victoryCharBtnEl) {
+        this.victoryCharBtnEl.addEventListener('click', () => this.openCharacterModal());
+      }
+      if (this.charCloseBtnEl) {
+        this.charCloseBtnEl.addEventListener('click', () => this.closeCharacterModal());
+      }
+
+      if (this.charModalEl) {
+        this.charModalEl.addEventListener('click', (e) => {
+          if (e.target === this.charModalEl) {
+            this.closeCharacterModal();
+          }
+        });
+      }
+
+      // ESC 키로 캐릭터 모달 닫기
+      window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && this.isCharacterModalOpen()) {
+          this.closeCharacterModal();
+          e.stopPropagation();
+        }
+      });
+
+      if (this.characterSystem && typeof this.characterSystem.subscribe === 'function') {
+        this.characterSystem.subscribe(() => {
+          this.updateCharacterDisplay();
+          if (this.isCharacterModalOpen()) {
+            this.renderCharacters();
+          }
+        });
+      }
+
+      this.updateCharacterDisplay();
+    }
+
+    /**
+     * HUD 캐릭터 칩 및 모달 내 재화/캐릭터 상태 갱신
+     */
+    updateCharacterDisplay() {
+      if (!this.characterSystem) return;
+      const currentChar = this.characterSystem.getSelectedCharacter();
+
+      if (this.hudCharNameEl && currentChar) {
+        this.hudCharNameEl.textContent = currentChar.name;
+      }
+      if (this.hudCharIconEl && currentChar) {
+        this.hudCharIconEl.textContent = currentChar.icon || '👔';
+      }
+
+      const balance = this.meta ? this.meta.getCurrency() : 0;
+      if (this.charCurrencyValEl) {
+        this.charCurrencyValEl.textContent = `₩${balance.toLocaleString()}`;
+      }
+    }
+
+    /**
+     * 캐릭터 선택 모달 열기
+     */
+    openCharacterModal() {
+      if (this.charModalEl) {
+        this.charModalEl.hidden = false;
+        this.updateCharacterDisplay();
+        this.renderCharacters();
+      }
+    }
+
+    /**
+     * 캐릭터 선택 모달 닫기
+     */
+    closeCharacterModal() {
+      if (this.charModalEl) {
+        this.charModalEl.hidden = true;
+      }
+    }
+
+    /**
+     * 캐릭터 선택 모달 열림 여부
+     */
+    isCharacterModalOpen() {
+      return Boolean(this.charModalEl && !this.charModalEl.hidden);
+    }
+
+    /**
+     * 캐릭터 목록 동적 렌더링
+     */
+    renderCharacters() {
+      if (!this.charItemsListEl || !this.characterSystem) {
+        return;
+      }
+
+      const chars = this.characterSystem.getAllCharacters();
+      const currentSelectedId = this.characterSystem.getSelectedCharacterId();
+      const currentBalance = this.meta ? this.meta.getCurrency() : 0;
+
+      this.charItemsListEl.innerHTML = '';
+
+      chars.forEach((cfg) => {
+        const isUnlocked = this.characterSystem.isUnlocked(cfg.id);
+        const isSelected = cfg.id === currentSelectedId;
+        const canAfford = !isUnlocked && currentBalance >= cfg.unlockCost;
+
+        const card = document.createElement('div');
+        let cardClass = 'char-item-card';
+        if (isSelected) cardClass += ' is-selected';
+        else if (!isUnlocked) cardClass += ' is-locked';
+        card.className = cardClass;
+        card.setAttribute('data-char-id', cfg.id);
+
+        let statusBadgeHtml = '';
+        if (isSelected) {
+          statusBadgeHtml = '<span class="char-item-status-badge is-selected">출근 중</span>';
+        } else if (isUnlocked) {
+          statusBadgeHtml = '<span class="char-item-status-badge is-unlocked">해금 완료</span>';
+        } else {
+          statusBadgeHtml = `<span class="char-item-status-badge is-locked">🔒 잠김 (₩${cfg.unlockCost})</span>`;
+        }
+
+        let buttonHtml = '';
+        if (isSelected) {
+          buttonHtml = '<button type="button" class="char-action-btn is-active" disabled>출근 중</button>';
+        } else if (isUnlocked) {
+          buttonHtml = `<button type="button" class="char-action-btn is-select" data-action="select" data-id="${cfg.id}">출근하기</button>`;
+        } else {
+          const btnDisabled = !canAfford;
+          buttonHtml = `<button type="button" class="char-action-btn is-unlock" data-action="unlock" data-id="${cfg.id}" ${btnDisabled ? 'disabled' : ''}>₩${cfg.unlockCost} 해금</button>`;
+        }
+
+        card.innerHTML = `
+          <div class="char-item-icon" aria-hidden="true">${cfg.icon}</div>
+          <div class="char-item-info">
+            <div class="char-item-title-row">
+              <span class="char-item-name">${cfg.name}</span>
+              <span class="char-item-role-badge">${cfg.role}</span>
+              ${statusBadgeHtml}
+            </div>
+            <p class="char-item-desc">${cfg.desc}</p>
+            <div class="char-perk-box">
+              <span class="char-perk-badge">⚡ ${cfg.perkName}</span>
+              <span class="char-perk-desc">${cfg.perkDesc}</span>
+            </div>
+          </div>
+          ${buttonHtml}
+        `;
+
+        const actionBtn = card.querySelector('[data-action]');
+        if (actionBtn) {
+          actionBtn.addEventListener('click', () => {
+            const action = actionBtn.getAttribute('data-action');
+            if (action === 'unlock') {
+              const res = this.characterSystem.unlockCharacter(cfg.id, this.meta);
+              if (res.success) {
+                this.updateCurrencyDisplay();
+                this.updateCharacterDisplay();
+                this.renderCharacters();
+                if (typeof this.onCharacterChanged === 'function') {
+                  this.onCharacterChanged(cfg.id, 'unlock');
+                }
+              }
+            } else if (action === 'select') {
+              const res = this.characterSystem.selectCharacter(cfg.id);
+              if (res.success) {
+                this.updateCharacterDisplay();
+                this.renderCharacters();
+                if (typeof this.onCharacterChanged === 'function') {
+                  this.onCharacterChanged(cfg.id, 'select');
+                }
+              }
+            }
+          });
+        }
+
+        this.charItemsListEl.appendChild(card);
       });
     }
 
