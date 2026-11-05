@@ -504,6 +504,9 @@
    */
   class OfficeMap {
     constructor(layoutConfig = FIXED_OFFICE_LAYOUT) {
+      this.seed = layoutConfig.seed ?? 'fixed-default';
+      this.isRandomGenerated = Boolean(layoutConfig.isRandomGenerated);
+
       this.width = layoutConfig.worldWidth;
       this.height = layoutConfig.worldHeight;
       this.wallThickness = layoutConfig.wallThickness ?? 24;
@@ -895,6 +898,66 @@
         }
       }
       return false;
+    }
+
+    /**
+     * 시작 방을 기준으로 복도를 통해 도달 가능한 모든 방의 연결 그래프 정보 반환
+     */
+    getConnectivityInfo() {
+      const startRoom =
+        this.rooms.find((r) => r.type === ROOM_TYPES.START) || this.rooms[0] || null;
+      if (!startRoom) {
+        return {
+          startRoomId: null,
+          totalRooms: 0,
+          reachableRoomIds: [],
+          reachableCount: 0,
+          isFullyConnected: false
+        };
+      }
+
+      const adj = new Map();
+      for (let i = 0; i < this.rooms.length; i++) {
+        adj.set(this.rooms[i].id, new Set());
+      }
+      for (let i = 0; i < this.corridors.length; i++) {
+        const c = this.corridors[i];
+        if (adj.has(c.fromRoomId) && adj.has(c.toRoomId)) {
+          adj.get(c.fromRoomId).add(c.toRoomId);
+          adj.get(c.toRoomId).add(c.fromRoomId);
+        }
+      }
+
+      const visited = new Set([startRoom.id]);
+      const queue = [startRoom.id];
+      while (queue.length > 0) {
+        const cur = queue.shift();
+        for (const nxt of adj.get(cur) || []) {
+          if (!visited.has(nxt)) {
+            visited.add(nxt);
+            queue.push(nxt);
+          }
+        }
+      }
+
+      return {
+        startRoomId: startRoom.id,
+        totalRooms: this.rooms.length,
+        reachableRoomIds: Array.from(visited),
+        reachableCount: visited.size,
+        isFullyConnected: visited.size === this.rooms.length
+      };
+    }
+
+    /**
+     * 랜덤 맵 생성기(RandomMapGenerator)를 통해 새로운 OfficeMap 인스턴스를 생성 (실패 시 안전 폴백)
+     */
+    static createRandom(options = {}) {
+      if (PO.RandomMapGenerator && typeof PO.RandomMapGenerator.generate === 'function') {
+        const layout = PO.RandomMapGenerator.generate(options);
+        return new OfficeMap(layout);
+      }
+      return new OfficeMap(FIXED_OFFICE_LAYOUT);
     }
   }
 

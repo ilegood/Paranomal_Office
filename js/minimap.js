@@ -50,6 +50,23 @@
     }
 
     /**
+     * 맵 재생성 또는 게임 재시작 시 이전 맵의 투영 상태·구역 텍스트·캔버스 잔상을 완전히 초기화
+     */
+    reset() {
+      this.lastRenderState = null;
+      this._lastZoneLabel = '';
+      if (this.zoneTextEl) {
+        this.zoneTextEl.textContent = '-';
+      }
+      if (this.canvas && this.ctx) {
+        this.ctx.save();
+        this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+        this.ctx.clearRect(0, 0, this.cssWidth, this.cssHeight);
+        this.ctx.restore();
+      }
+    }
+
+    /**
      * 실제 OfficeMap의 방·복도 데이터로부터 미니맵 투영 변환 정보 계산 (하드코딩 없음)
      */
     _computeProjection(officeMap) {
@@ -247,10 +264,14 @@
         ctx.restore();
       }
 
+      // 맵 크기에 비례하여 마커 반경을 소폭 자동 조절 (대형 10개 방 맵에서도 선명하고 겹치지 않게 유지)
+      const markerScale = Math.max(0.82, Math.min(1.05, proj.scale / 0.068));
+
       // 7. 미획득 보급 아이템(응급 구급상자 / 무기 강화 모듈) 실시간 위치 표시
       const itemMarkers = [];
       if (itemSystem && typeof itemSystem.getActiveItems === 'function') {
         const activeItems = itemSystem.getActiveItems();
+        const itemHalf = 3.1 * markerScale;
         for (let i = 0; i < activeItems.length; i++) {
           const item = activeItems[i];
           const mp = proj.worldToMini(item.position.x, item.position.y);
@@ -259,12 +280,12 @@
           ctx.save();
           ctx.translate(mp.x, mp.y);
           if (item.category === 'heal') {
-            // 회복 아이템: 에메랄드 사각/십자 마커
+            // 회복 아이템: 에메랄드 사각 마커
             ctx.fillStyle = '#4ade80';
             ctx.strokeStyle = '#090d16';
-            ctx.lineWidth = 1.4;
+            ctx.lineWidth = 1.3;
             ctx.beginPath();
-            ctx.rect(-3.2, -3.2, 6.4, 6.4);
+            ctx.rect(-itemHalf, -itemHalf, itemHalf * 2, itemHalf * 2);
             ctx.fill();
             ctx.stroke();
           } else {
@@ -272,9 +293,9 @@
             ctx.rotate(Math.PI * 0.25);
             ctx.fillStyle = '#fbbf24';
             ctx.strokeStyle = '#090d16';
-            ctx.lineWidth = 1.4;
+            ctx.lineWidth = 1.3;
             ctx.beginPath();
-            ctx.rect(-3.1, -3.1, 6.2, 6.2);
+            ctx.rect(-itemHalf, -itemHalf, itemHalf * 2, itemHalf * 2);
             ctx.fill();
             ctx.stroke();
           }
@@ -286,6 +307,7 @@
       const enemyMarkers = [];
       if (enemySystem && typeof enemySystem.getAliveEnemies === 'function') {
         const aliveEnemies = enemySystem.getAliveEnemies();
+        const enemyRadius = 3.6 * markerScale;
         for (let i = 0; i < aliveEnemies.length; i++) {
           const enemy = aliveEnemies[i];
           const mp = proj.worldToMini(enemy.position.x, enemy.position.y);
@@ -294,21 +316,21 @@
 
           if (isAggro) {
             ctx.beginPath();
-            ctx.arc(mp.x, mp.y, 6.2, 0, Math.PI * 2);
+            ctx.arc(mp.x, mp.y, enemyRadius + 2.4, 0, Math.PI * 2);
             ctx.fillStyle = 'rgba(244, 63, 94, 0.34)';
             ctx.fill();
           }
 
           ctx.beginPath();
-          ctx.arc(mp.x, mp.y, 3.8, 0, Math.PI * 2);
+          ctx.arc(mp.x, mp.y, enemyRadius, 0, Math.PI * 2);
           ctx.fillStyle = '#f43f5e';
           ctx.fill();
-          ctx.lineWidth = 1.5;
+          ctx.lineWidth = 1.4;
           ctx.strokeStyle = '#090d16';
           ctx.stroke();
 
           ctx.beginPath();
-          ctx.arc(mp.x, mp.y, 1.3, 0, Math.PI * 2);
+          ctx.arc(mp.x, mp.y, Math.max(1.0, 1.25 * markerScale), 0, Math.PI * 2);
           ctx.fillStyle = '#ffe4e6';
           ctx.fill();
         }
@@ -317,15 +339,16 @@
       // 9. 플레이어 현재 위치 표시 (가장 명확하게 구분되는 시안 펄스 링 + 시선 방향 + 화이트 코어)
       const playerMini = proj.worldToMini(player.position.x, player.position.y);
       const pulse = 0.5 + 0.5 * Math.sin(this._pulseTime * 2.2);
+      const playerRadius = Math.max(4.1, 4.6 * markerScale);
 
       ctx.save();
       ctx.translate(playerMini.x, playerMini.y);
 
       // 외곽 맥동 링
       ctx.beginPath();
-      ctx.arc(0, 0, 6.5 + pulse * 2.4, 0, Math.PI * 2);
+      ctx.arc(0, 0, playerRadius + 1.8 + pulse * 2.2, 0, Math.PI * 2);
       ctx.strokeStyle = `rgba(56, 189, 248, ${(0.62 - pulse * 0.25).toFixed(3)})`;
-      ctx.lineWidth = 1.6;
+      ctx.lineWidth = 1.5;
       ctx.stroke();
 
       // 바라보는 방향 삼각 포인터
@@ -333,9 +356,9 @@
         ctx.save();
         ctx.rotate(player.direction.angle || 0);
         ctx.beginPath();
-        ctx.moveTo(8.2, 0);
-        ctx.lineTo(3.2, -3.2);
-        ctx.lineTo(3.2, 3.2);
+        ctx.moveTo(playerRadius + 3.6, 0);
+        ctx.lineTo(playerRadius - 1.2, -3.0);
+        ctx.lineTo(playerRadius - 1.2, 3.0);
         ctx.closePath();
         ctx.fillStyle = '#38bdf8';
         ctx.fill();
@@ -344,15 +367,15 @@
 
       // 중심 이중 마커 (시안 링 + 화이트 중심점)
       ctx.beginPath();
-      ctx.arc(0, 0, 4.6, 0, Math.PI * 2);
+      ctx.arc(0, 0, playerRadius, 0, Math.PI * 2);
       ctx.fillStyle = player.isDead ? '#94a3b8' : '#38bdf8';
       ctx.fill();
-      ctx.lineWidth = 1.7;
+      ctx.lineWidth = 1.6;
       ctx.strokeStyle = '#090d16';
       ctx.stroke();
 
       ctx.beginPath();
-      ctx.arc(0, 0, 2.0, 0, Math.PI * 2);
+      ctx.arc(0, 0, Math.max(1.7, 2.0 * markerScale), 0, Math.PI * 2);
       ctx.fillStyle = '#ffffff';
       ctx.fill();
 
@@ -361,6 +384,7 @@
 
       // 최신 투영 결과 기록
       this.lastRenderState = {
+        mapSeed: officeMap.seed ?? null,
         activeSpaceId: activeSpace ? activeSpace.id : null,
         activeSpaceName: zoneLabel,
         roomCount: rooms.length,

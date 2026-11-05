@@ -261,11 +261,7 @@
      * 탐험 사무실 맵 보급 방 고정 배치 아이템 목록 반환 (회복 아이템 1개, 무기 강화 아이템 1개)
      */
     static createDefaultMapItems(officeMap = null) {
-      if (
-        officeMap &&
-        Array.isArray(officeMap.itemSpawns) &&
-        officeMap.itemSpawns.length > 0
-      ) {
+      if (officeMap && Array.isArray(officeMap.itemSpawns)) {
         return officeMap.itemSpawns.map((spawn) => ({ ...spawn }));
       }
 

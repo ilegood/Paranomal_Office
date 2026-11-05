@@ -32,11 +32,11 @@
             </div>
           </section>
 
-          <!-- 우측 상단: 프로토타입 배지 및 실시간 전체 구역 미니맵 -->
+          <!-- 우측 상단: 프로토타입 배지, 실시간 전체 구역 미니맵 및 디버그 시드 표시(기본 숨김) -->
           <div class="hud-top-right">
             <aside class="hud-card prototype-badge">
               <span class="status-dot" aria-hidden="true"></span>
-              <span class="prototype-text">PROTOTYPE · Phase 7 (다중 방 탐험 맵 및 미니맵)</span>
+              <span class="prototype-text">PROTOTYPE · Phase 8 (랜덤 맵 생성 및 시스템 연동)</span>
             </aside>
 
             <aside id="minimap-panel" class="hud-card minimap-panel" aria-label="전체 구역 미니맵">
@@ -45,7 +45,7 @@
                 <span id="minimap-zone-text" class="minimap-zone-badge">시작 방</span>
               </div>
               <div class="minimap-canvas-wrap">
-                <canvas id="minimap-canvas" width="214" height="118" aria-label="탐험 맵 구조 및 위치 표시"></canvas>
+                <canvas id="minimap-canvas" width="214" height="124" aria-label="탐험 맵 구조 및 위치 표시"></canvas>
               </div>
               <div class="minimap-legend" aria-hidden="true">
                 <span class="legend-item"><i class="legend-dot is-player"></i>나</span>
@@ -54,6 +54,11 @@
                 <span class="legend-item"><i class="legend-dot is-upgrade"></i>강화</span>
               </div>
             </aside>
+
+            <div id="debug-seed-badge" class="hud-card debug-seed-badge" aria-label="디버그 맵 시드" hidden>
+              <span class="debug-seed-label">DEBUG SEED</span>
+              <code id="debug-seed-text" class="debug-seed-value">-</code>
+            </div>
           </div>
         </div>
 
@@ -162,6 +167,7 @@
   <!-- 로컬 파일(file://)에서도 별도 서버 없이 실행되도록 순차 스크립트로 로드 -->
   <script src="js/input.js"></script>
   <script src="js/map.js"></script>
+  <script src="js/map-generator.js"></script>
   <script src="js/player.js"></script>
   <script src="js/movement.js"></script>
   <script src="js/enemy.js"></script>

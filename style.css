@@ -717,7 +717,30 @@ body {
 #minimap-canvas {
   display: block;
   width: clamp(174px, 16.6vw, 214px);
-  height: clamp(96px, 10.8vh, 118px);
+  height: clamp(102px, 11.4vh, 124px);
+}
+
+/* 디버그 전용 시드 배지 (일반 플레이 시 hidden 유지, F3 또는 ?debug=1 / ?seed= 시에만 표시) */
+.debug-seed-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border-color: #334155;
+  background: rgba(11, 16, 28, 0.88);
+  font-size: 10.5px;
+}
+
+.debug-seed-label {
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  color: #64748b;
+}
+
+.debug-seed-value {
+  font-family: Consolas, "Courier New", monospace;
+  font-weight: 700;
+  color: #93c5fd;
 }
 
 .minimap-legend {

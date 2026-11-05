@@ -160,11 +160,7 @@
      * 기본 사무실 맵 내 테스트 타겟 배치 생성 헬퍼
      */
     static createDefaultTargets(officeMap = null) {
-      if (
-        officeMap &&
-        Array.isArray(officeMap.targetSpawns) &&
-        officeMap.targetSpawns.length > 0
-      ) {
+      if (officeMap && Array.isArray(officeMap.targetSpawns)) {
         return officeMap.targetSpawns.map((spawn) => ({ ...spawn }));
       }
 

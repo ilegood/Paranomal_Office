@@ -52,6 +52,10 @@
       this.cooldownTextEl = document.getElementById('weapon-cooldown-text');
       this.cooldownFillEl = document.getElementById('weapon-cooldown-fill');
 
+      // 디버그 전용 시드 UI 요소 (일반 플레이 시 비표시)
+      this.debugSeedBadgeEl = document.getElementById('debug-seed-badge');
+      this.debugSeedTextEl = document.getElementById('debug-seed-text');
+
       this._lastHp = null;
       this._lastMaxHp = null;
       this._lastKeyState = {
@@ -104,6 +108,18 @@
       this._lastGameOver = next;
       if (this.gameOverOverlayEl) {
         this.gameOverOverlayEl.hidden = !next;
+      }
+    }
+
+    /**
+     * 디버그 시드 텍스트 및 배지 노출 여부 제어 (기본값: 일반 플레이 UI 간결화를 위해 숨김)
+     */
+    setDebugSeed(seedText, visible = false) {
+      if (this.debugSeedTextEl) {
+        this.debugSeedTextEl.textContent = seedText ? String(seedText) : '-';
+      }
+      if (this.debugSeedBadgeEl) {
+        this.debugSeedBadgeEl.hidden = !visible;
       }
     }
 

@@ -231,7 +231,7 @@
      */
     static createDefaultEnemies(playerBaseSpeed = 260, officeMap = null) {
       const spawns =
-        officeMap && Array.isArray(officeMap.enemySpawns) && officeMap.enemySpawns.length > 0
+        officeMap && Array.isArray(officeMap.enemySpawns)
           ? officeMap.enemySpawns
           : [
               { id: 'enemy-combat-1', x: 1200, y: 910 },
