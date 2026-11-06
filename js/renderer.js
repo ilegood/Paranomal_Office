@@ -1730,12 +1730,17 @@
     }
 
     /**
-     * 현재 장착 무기(대형 사무용 스테이플러 / 사무용 권총) 도형 렌더링
+     * 현재 장착 무기(사무용 커터, 대형 망치, 전기 충격봉, 권총, 산탄총, 서류 발사기) 도형 렌더링
      */
     _drawEquippedWeapon(ctx, player, weaponId, bounce, activeMeleeEffect = null) {
       const aimAngle = player.direction.angle;
+      const isMelee =
+        weaponId === 'melee' ||
+        weaponId === 'cutter' ||
+        weaponId === 'hammer' ||
+        weaponId === 'stun_baton';
       const meleePose =
-        weaponId === 'melee' && activeMeleeEffect
+        isMelee && activeMeleeEffect
           ? this._computeMeleeSwingPose(activeMeleeEffect)
           : null;
       const weaponAngle = meleePose ? meleePose.headAngle : aimAngle;
@@ -1750,18 +1755,35 @@
         ctx.scale(1, -1);
       }
 
-      if (weaponId === 'melee') {
-        // 대형 사무용 스테이플러 (붉은 상단 레버 + 금속 하단 받침대)
-        this._fillStrokeRoundRect(ctx, 10, 1, 16, 4.5, 1.5, '#64748b', OUTLINE_COLOR, 1.8);
-        this._fillStrokeRoundRect(ctx, 9, -5.5, 17, 6.5, 2, '#e11d48', OUTLINE_COLOR, 2);
-        ctx.fillStyle = '#cbd5e1';
-        ctx.fillRect(21, -1, 4, 2.5);
-      } else if (weaponId === 'ranged') {
-        // 사무용 권총 (권총 손잡이 + 메탈 슬라이드 총열)
+      if (weaponId === 'hammer') {
+        // 대형 망치 (묵직한 오함마)
+        this._fillStrokeRoundRect(ctx, 6, -2.5, 16, 5, 1.5, '#92400e', OUTLINE_COLOR, 1.8);
+        this._fillStrokeRoundRect(ctx, 20, -8, 10, 16, 2.5, '#475569', OUTLINE_COLOR, 2.2);
+      } else if (weaponId === 'stun_baton') {
+        // 전기 충격봉
+        this._fillStrokeRoundRect(ctx, 7, -2.5, 7, 5, 1.5, '#0f172a', OUTLINE_COLOR, 1.6);
+        this._fillStrokeRoundRect(ctx, 14, -3, 15, 6, 2, '#0284c7', OUTLINE_COLOR, 2);
+        ctx.fillStyle = '#7dd3fc';
+        ctx.fillRect(17, -1.5, 9, 3);
+      } else if (weaponId === 'shotgun') {
+        // 산탄총
+        this._fillStrokeRoundRect(ctx, 5, -1, 9, 6, 1.5, '#78350f', OUTLINE_COLOR, 1.6);
+        this._fillStrokeRoundRect(ctx, 13, -4.5, 18, 5.5, 1.8, '#475569', OUTLINE_COLOR, 2);
+      } else if (weaponId === 'doc_launcher') {
+        // 서류 발사기
+        this._fillStrokeRoundRect(ctx, 8, -6, 17, 12, 2.5, '#1e293b', OUTLINE_COLOR, 2);
+        this._fillStrokeRoundRect(ctx, 12, -4.5, 9, 9, 1.5, '#f8fafc', OUTLINE_COLOR, 1.2);
+      } else if (weaponId === 'pistol' || weaponId === 'ranged') {
+        // 사무용 권총
         this._fillStrokeRoundRect(ctx, 10, 0, 5.5, 7.5, 1.5, '#334155', OUTLINE_COLOR, 1.8);
         this._fillStrokeRoundRect(ctx, 9, -5, 17, 6, 1.8, '#94a3b8', OUTLINE_COLOR, 2);
         ctx.fillStyle = '#38bdf8';
         ctx.fillRect(12, -3.2, 6, 2);
+      } else {
+        // 사무용 커터 (기본 근접 무기)
+        this._fillStrokeRoundRect(ctx, 9, -4.5, 14, 7, 2, '#eab308', OUTLINE_COLOR, 1.8);
+        ctx.fillStyle = '#e2e8f0';
+        ctx.fillRect(19, -3.5, 6, 4);
       }
 
       ctx.restore();
@@ -2011,17 +2033,19 @@
       }
 
       // 상태 및 이름 뱃지
-      const stateBadge = isAttacking
-        ? isWindup
-          ? '공격 준비!'
-          : '공격!'
-        : enemy.state === 'Chase'
-          ? enemy.isPlayerInRange
-            ? '추적!'
-            : '수색?'
-          : enemy.state === 'Patrol'
-            ? '순찰'
-            : '대기';
+      const stateBadge = enemy.stunTimer > 0
+        ? '⚡ 경직!'
+        : isAttacking
+          ? isWindup
+            ? '공격 준비!'
+            : '공격!'
+          : enemy.state === 'Chase'
+            ? enemy.isPlayerInRange
+              ? '추적!'
+              : '수색?'
+            : enemy.state === 'Patrol'
+              ? '순찰'
+              : '대기';
 
       const enemyName = enemy.name || '적';
       const elitePrefix = enemy.isElite ? '★ ' : '';
@@ -2034,14 +2058,44 @@
       ctx.lineWidth = 2.8;
       ctx.strokeText(topLabel, 0, barY - 3.5);
       ctx.fillStyle =
-        type === 'manager'
-          ? '#fef08a'
-          : isWindup
-            ? '#fde047'
-            : isChasing
-              ? '#fda4af'
-              : '#e9d5ff';
+        enemy.stunTimer > 0
+          ? '#38bdf8'
+          : type === 'manager'
+            ? '#fef08a'
+            : isWindup
+              ? '#fde047'
+              : isChasing
+                ? '#fda4af'
+                : '#e9d5ff';
       ctx.fillText(topLabel, 0, barY - 3.5);
+
+      // Phase 16: 전기 충격봉 피격 시 머리 위 번개 및 감전 방전 스파크 연출
+      if (enemy.stunTimer > 0) {
+        ctx.save();
+        ctx.font = '900 15px "Malgun Gothic", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.strokeStyle = OUTLINE_COLOR;
+        ctx.lineWidth = 3.2;
+        ctx.strokeText('⚡', 0, barY - 14);
+        ctx.fillStyle = '#38bdf8';
+        ctx.fillText('⚡', 0, barY - 14);
+
+        // 방전 스파크 라인 4가닥
+        ctx.strokeStyle = '#7dd3fc';
+        ctx.lineWidth = 1.8;
+        const sparkTime = performance.now() * 0.02;
+        for (let s = 0; s < 4; s++) {
+          const sa = (s / 4) * Math.PI * 2 + sparkTime;
+          const sx = Math.cos(sa) * 16;
+          const sy = -28 + Math.sin(sa) * 14;
+          ctx.beginPath();
+          ctx.moveTo(sx * 0.3, sy);
+          ctx.lineTo(sx * 0.7, sy + 3);
+          ctx.lineTo(sx, sy);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
 
       // 플레이어 감지 직후 느낌표(!) 팝업
       if (enemy.alertTimer > 0) {
@@ -2520,26 +2574,86 @@
 
     /**
      * 원거리 무기 투사체 렌더링 (상체 높이로 비행)
+     * Phase 16: 권총(단일 탄환), 산탄총(오렌지 확산 펠릿), 서류 발사기(날아가는 A4 서류)
      */
     _drawProjectile(ctx, proj) {
       const visualY = proj.y - 18;
       const prevVisualY = proj.prevY - 18;
+      const wId = proj.weaponId || 'pistol';
 
       ctx.save();
 
-      // 짧은 잔상 궤적
-      ctx.strokeStyle = 'rgba(56, 189, 248, 0.55)';
-      ctx.lineWidth = 4;
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.moveTo(proj.prevX - Math.cos(proj.angle) * 8, prevVisualY - Math.sin(proj.angle) * 8);
-      ctx.lineTo(proj.x, visualY);
-      ctx.stroke();
+      if (wId === 'shotgun') {
+        // 산탄총 펠릿: 불꽃 오렌지 궤적 및 둥근 산탄 펠릿
+        ctx.strokeStyle = 'rgba(249, 115, 22, 0.65)';
+        ctx.lineWidth = 3.2;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(proj.prevX - Math.cos(proj.angle) * 7, prevVisualY - Math.sin(proj.angle) * 7);
+        ctx.lineTo(proj.x, visualY);
+        ctx.stroke();
 
-      // 탄환 본체
-      ctx.translate(proj.x, visualY);
-      ctx.rotate(proj.angle);
-      this._fillStrokeRoundRect(ctx, -6, -3.5, 12, 7, 3.5, '#fde047', OUTLINE_COLOR, 2);
+        ctx.translate(proj.x, visualY);
+        ctx.rotate(proj.angle);
+        ctx.fillStyle = '#fb923c';
+        ctx.strokeStyle = '#c2410c';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.arc(0, 0, 4.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // 펠릿 중심 백열 하이라이트
+        ctx.fillStyle = '#fef08a';
+        ctx.beginPath();
+        ctx.arc(-1, -1, 2, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (wId === 'doc_launcher') {
+        // 서류 발사기: 날아가는 결재 서류(A4 문서)
+        ctx.strokeStyle = 'rgba(241, 245, 249, 0.55)';
+        ctx.lineWidth = 2.5;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(proj.prevX - Math.cos(proj.angle) * 6, prevVisualY - Math.sin(proj.angle) * 6);
+        ctx.lineTo(proj.x, visualY);
+        ctx.stroke();
+
+        ctx.translate(proj.x, visualY);
+        ctx.rotate(proj.angle);
+
+        // 흰색 A4 서류 직사각형
+        this._fillStrokeRoundRect(ctx, -7, -4.5, 14, 9, 1.5, '#ffffff', OUTLINE_COLOR, 1.6);
+
+        // 서류 내 결재 줄무늬
+        ctx.strokeStyle = '#94a3b8';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(-4, -1.8);
+        ctx.lineTo(4, -1.8);
+        ctx.moveTo(-4, 0.2);
+        ctx.lineTo(3, 0.2);
+        ctx.moveTo(-4, 2.2);
+        ctx.lineTo(1, 2.2);
+        ctx.stroke();
+
+        // 우측 상단 결재 도장 인감(붉은 점)
+        ctx.fillStyle = '#ef4444';
+        ctx.fillRect(2, -3.5, 2.5, 2.5);
+      } else {
+        // 기본 사무용 권총 탄환
+        ctx.strokeStyle = 'rgba(56, 189, 248, 0.55)';
+        ctx.lineWidth = 4;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(proj.prevX - Math.cos(proj.angle) * 8, prevVisualY - Math.sin(proj.angle) * 8);
+        ctx.lineTo(proj.x, visualY);
+        ctx.stroke();
+
+        // 탄환 본체
+        ctx.translate(proj.x, visualY);
+        ctx.rotate(proj.angle);
+        this._fillStrokeRoundRect(ctx, -6, -3.5, 12, 7, 3.5, '#fde047', OUTLINE_COLOR, 2);
+      }
 
       ctx.restore();
     }
@@ -2623,7 +2737,8 @@
     }
 
     /**
-     * 대형 사무용 스테이플러 단일 부채꼴 휘두르기 시각 효과 (공격 판정과 분리된 meleeEffects 렌더링)
+     * 근접 무기 단일 부채꼴 휘두르기 시각 효과
+     * Phase 16: 사무용 커터(예리한 은청색), 대형 망치(육중한 호박색 분쇄 충격파), 전기 충격봉(고압 방전 스파크)
      */
     _drawMeleeSlashArc(ctx, combat) {
       if (!combat.meleeEffects || combat.meleeEffects.length === 0) {
@@ -2640,12 +2755,12 @@
         const originY = fx.y + (fx.aimOffsetY ?? -18);
         const { sweepDir, tailAngle, headAngle, outerRadius, alpha } = pose;
         const anticlockwise = sweepDir < 0;
+        const wId = fx.weaponId || 'cutter';
 
         ctx.save();
         ctx.translate(fx.x, originY);
 
-        // 단일 황금색/노란색 카툰 부채꼴 본체 (후미는 옅은 잔상처럼 투명하고 선두로 갈수록 선명한 황금빛)
-        this._traceTaperedFanPath(ctx, tailAngle, headAngle, sweepDir, outerRadius, 0.16);
+        this._traceTaperedFanPath(ctx, tailAngle, headAngle, sweepDir, outerRadius, wId === 'hammer' ? 0.22 : 0.16);
         const gradR = outerRadius * 0.72;
         const tailX = Math.cos(tailAngle) * gradR;
         const tailY = Math.sin(tailAngle) * gradR;
@@ -2653,31 +2768,92 @@
         const headY = Math.sin(headAngle) * gradR;
 
         const grad = ctx.createLinearGradient(tailX, tailY, headX, headY);
-        grad.addColorStop(0, `rgba(245, 158, 11, ${(alpha * 0.14).toFixed(3)})`);
-        grad.addColorStop(0.52, `rgba(251, 191, 36, ${(alpha * 0.68).toFixed(3)})`);
-        grad.addColorStop(1, `rgba(253, 224, 71, ${(alpha * 0.94).toFixed(3)})`);
-        ctx.fillStyle = grad;
-        ctx.fill();
 
-        // 카툰풍 윤곽을 살리는 부드러운 황금빛 테두리
-        ctx.strokeStyle = `rgba(217, 119, 6, ${(alpha * 0.52).toFixed(3)})`;
-        ctx.lineWidth = 1.5;
-        ctx.lineJoin = 'round';
-        ctx.stroke();
+        if (wId === 'hammer') {
+          // 대형 망치: 육중한 주황/호박색 파쇄 호
+          grad.addColorStop(0, `rgba(180, 83, 9, ${(alpha * 0.20).toFixed(3)})`);
+          grad.addColorStop(0.52, `rgba(245, 158, 11, ${(alpha * 0.78).toFixed(3)})`);
+          grad.addColorStop(1, `rgba(254, 215, 170, ${(alpha * 0.98).toFixed(3)})`);
+          ctx.fillStyle = grad;
+          ctx.fill();
 
-        // 바깥 칼날 원호 및 선두 타격선 밝은 노란색 하이라이트
-        const innerHeadR = outerRadius * 0.18;
-        const edgeGrad = ctx.createLinearGradient(tailX, tailY, headX, headY);
-        edgeGrad.addColorStop(0, `rgba(254, 240, 138, ${(alpha * 0.18).toFixed(3)})`);
-        edgeGrad.addColorStop(0.45, `rgba(254, 240, 138, ${(alpha * 0.78).toFixed(3)})`);
-        edgeGrad.addColorStop(1, `rgba(254, 249, 195, ${(alpha * 0.98).toFixed(3)})`);
-        ctx.strokeStyle = edgeGrad;
-        ctx.lineWidth = 2.8;
-        ctx.lineCap = 'round';
-        ctx.beginPath();
-        ctx.arc(0, 0, Math.max(1, outerRadius - 1.4), tailAngle, headAngle, anticlockwise);
-        ctx.lineTo(Math.cos(headAngle) * innerHeadR, Math.sin(headAngle) * innerHeadR);
-        ctx.stroke();
+          ctx.strokeStyle = `rgba(180, 83, 9, ${(alpha * 0.75).toFixed(3)})`;
+          ctx.lineWidth = 2.4;
+          ctx.stroke();
+
+          // 바깥쪽 파쇄 충격파 림
+          const innerHeadR = outerRadius * 0.22;
+          ctx.strokeStyle = `rgba(254, 243, 199, ${(alpha * 0.96).toFixed(3)})`;
+          ctx.lineWidth = 4.0;
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.arc(0, 0, Math.max(1, outerRadius - 1.4), tailAngle, headAngle, anticlockwise);
+          ctx.lineTo(Math.cos(headAngle) * innerHeadR, Math.sin(headAngle) * innerHeadR);
+          ctx.stroke();
+        } else if (wId === 'stun_baton') {
+          // 전기 충격봉: 고압 방전 네온 블루/시안 스파크 호
+          grad.addColorStop(0, `rgba(2, 132, 199, ${(alpha * 0.20).toFixed(3)})`);
+          grad.addColorStop(0.52, `rgba(56, 189, 248, ${(alpha * 0.80).toFixed(3)})`);
+          grad.addColorStop(1, `rgba(224, 242, 254, ${(alpha * 0.98).toFixed(3)})`);
+          ctx.fillStyle = grad;
+          ctx.fill();
+
+          ctx.strokeStyle = `rgba(2, 132, 199, ${(alpha * 0.65).toFixed(3)})`;
+          ctx.lineWidth = 1.8;
+          ctx.stroke();
+
+          // 바깥 원호 네온 라이트
+          const innerHeadR = outerRadius * 0.16;
+          ctx.strokeStyle = `rgba(240, 249, 255, ${(alpha * 0.98).toFixed(3)})`;
+          ctx.lineWidth = 3.2;
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.arc(0, 0, Math.max(1, outerRadius - 1.4), tailAngle, headAngle, anticlockwise);
+          ctx.lineTo(Math.cos(headAngle) * innerHeadR, Math.sin(headAngle) * innerHeadR);
+          ctx.stroke();
+
+          // 방전 지그재그 스파크 3개
+          ctx.strokeStyle = `rgba(125, 211, 252, ${(alpha * 0.90).toFixed(3)})`;
+          ctx.lineWidth = 1.8;
+          for (let k = 1; k <= 3; k++) {
+            const frac = k / 4;
+            const spAngle = tailAngle + (headAngle - tailAngle) * frac;
+            const sx1 = Math.cos(spAngle) * (outerRadius * 0.85);
+            const sy1 = Math.sin(spAngle) * (outerRadius * 0.85);
+            const sx2 = Math.cos(spAngle) * (outerRadius * 1.12);
+            const sy2 = Math.sin(spAngle) * (outerRadius * 1.12);
+            ctx.beginPath();
+            ctx.moveTo(sx1, sy1);
+            ctx.lineTo((sx1 + sx2) * 0.5 + (Math.random() - 0.5) * 5, (sy1 + sy2) * 0.5 + (Math.random() - 0.5) * 5);
+            ctx.lineTo(sx2, sy2);
+            ctx.stroke();
+          }
+        } else {
+          // 사무용 커터: 날렵한 은청색/황금빛 베기 호
+          grad.addColorStop(0, `rgba(245, 158, 11, ${(alpha * 0.14).toFixed(3)})`);
+          grad.addColorStop(0.52, `rgba(251, 191, 36, ${(alpha * 0.68).toFixed(3)})`);
+          grad.addColorStop(1, `rgba(253, 224, 71, ${(alpha * 0.94).toFixed(3)})`);
+          ctx.fillStyle = grad;
+          ctx.fill();
+
+          ctx.strokeStyle = `rgba(217, 119, 6, ${(alpha * 0.52).toFixed(3)})`;
+          ctx.lineWidth = 1.5;
+          ctx.lineJoin = 'round';
+          ctx.stroke();
+
+          const innerHeadR = outerRadius * 0.18;
+          const edgeGrad = ctx.createLinearGradient(tailX, tailY, headX, headY);
+          edgeGrad.addColorStop(0, `rgba(254, 240, 138, ${(alpha * 0.18).toFixed(3)})`);
+          edgeGrad.addColorStop(0.45, `rgba(254, 240, 138, ${(alpha * 0.78).toFixed(3)})`);
+          edgeGrad.addColorStop(1, `rgba(254, 249, 195, ${(alpha * 0.98).toFixed(3)})`);
+          ctx.strokeStyle = edgeGrad;
+          ctx.lineWidth = 2.8;
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.arc(0, 0, Math.max(1, outerRadius - 1.4), tailAngle, headAngle, anticlockwise);
+          ctx.lineTo(Math.cos(headAngle) * innerHeadR, Math.sin(headAngle) * innerHeadR);
+          ctx.stroke();
+        }
 
         ctx.restore();
       }
@@ -2758,7 +2934,7 @@
     }
 
     /**
-     * 테스트 맵 고정 아이템 카툰 도형 렌더링 (응급 구급상자 / 무기 강화 모듈)
+     * Phase 15: 바닥 드롭 아이템 카툰 렌더링 (구급 키트, 야근 수당 봉투, 잔업용 운동화, 방탄 서류철, 무기 모듈)
      */
     _drawWorldItem(ctx, item, isFocused = false) {
       const hoverY = Math.sin(item.bobPhase) * 2.4;
@@ -2766,8 +2942,8 @@
       ctx.save();
       ctx.translate(item.position.x, item.position.y + hoverY);
 
-      if (item.category === 'heal') {
-        // 1. 응급 구급상자: 상단 빨간 손잡이 + 흰색 케이스 + 초록/빨간 십자(+) 도형
+      if (item.typeId === 'emergency_kit' || item.typeId === 'medkit' || item.category === 'heal') {
+        // 1. 응급 키트 / 구급상자: 상단 빨간 손잡이 + 흰색 케이스 + 초록/빨간 십자(+) 도형
         this._fillStrokeRoundRect(ctx, -6, -24, 12, 6, 2.5, '#ef4444', OUTLINE_COLOR, 2);
         this._fillStrokeRoundRect(ctx, -14, -19, 28, 19, 5, '#f8fafc', OUTLINE_COLOR, 2.4);
 
@@ -2795,8 +2971,168 @@
         ctx.closePath();
         ctx.fill();
         ctx.stroke();
+      } else if (item.typeId === 'overtime_pay') {
+        // 2. 야근 수당: 황금빛 급여 봉투 + 붉은 왁스 씰 & 황금 ₩ 기호
+        this._fillStrokeRoundRect(ctx, -13, -20, 26, 20, 4, '#fbbf24', OUTLINE_COLOR, 2.4);
+
+        // 봉투 덮개 삼각 라인
+        ctx.strokeStyle = OUTLINE_COLOR;
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.moveTo(-13, -20);
+        ctx.lineTo(0, -9);
+        ctx.lineTo(13, -20);
+        ctx.stroke();
+
+        // 중앙 붉은 보너스 씰
+        ctx.fillStyle = '#ef4444';
+        ctx.beginPath();
+        ctx.arc(0, -8.5, 5.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // 씰 안 ₩ 텍스트
+        ctx.font = '900 8.5px "Malgun Gothic", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#fef08a';
+        ctx.fillText('₩', 0, -8);
+      } else if (item.typeId === 'overtime_sneakers') {
+        // 3. 잔업용 운동화: 날렵한 시안/블루 스니커즈 + 번개(⚡) 대시 심볼
+        // 밑창
+        this._fillStrokeRoundRect(ctx, -14, -6, 28, 6, 2.5, '#f8fafc', OUTLINE_COLOR, 2);
+        // 신발 본체
+        this._fillStrokeRoundRect(ctx, -13, -19, 25, 14, 5, '#0284c7', OUTLINE_COLOR, 2.3);
+        // 앞코 라인
+        ctx.fillStyle = '#38bdf8';
+        ctx.beginPath();
+        ctx.arc(9, -11, 4.5, 0, Math.PI * 2);
+        ctx.fill();
+        // 발목 입구
+        ctx.fillStyle = '#0369a1';
+        ctx.fillRect(-10, -21, 10, 4);
+
+        // 번개 심볼
+        ctx.fillStyle = '#fde047';
+        ctx.strokeStyle = OUTLINE_COLOR;
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(-1, -17);
+        ctx.lineTo(3, -17);
+        ctx.lineTo(0.5, -12);
+        ctx.lineTo(4, -12);
+        ctx.lineTo(-3, -7);
+        ctx.lineTo(-1, -11);
+        ctx.lineTo(-4, -11);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      } else if (item.typeId === 'bulletproof_folder') {
+        // 4. 방탄 서류철: 단단한 강철 바인더 + 방패(🛡️) 리벳 엠블럼
+        this._fillStrokeRoundRect(ctx, -12, -22, 24, 22, 4, '#334155', OUTLINE_COLOR, 2.4);
+        // 좌측 바인더 링 힌지
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillRect(-13, -20, 3, 18);
+        ctx.strokeRect(-13, -20, 3, 18);
+
+        // 중앙 방패 엠블럼
+        ctx.fillStyle = '#a855f7';
+        ctx.strokeStyle = OUTLINE_COLOR;
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(0, -17);
+        ctx.lineTo(5.5, -14);
+        ctx.lineTo(5.5, -8);
+        ctx.lineTo(0, -4.5);
+        ctx.lineTo(-5.5, -8);
+        ctx.lineTo(-5.5, -14);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // 방패 중심 하이라이트 코어
+        ctx.fillStyle = '#f3e8ff';
+        ctx.beginPath();
+        ctx.arc(0, -10.5, 2, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (item.typeId === 'weapon_cutter') {
+        // Phase 16: 사무용 커터 - 노란색 대형 커터칼 본체 + 날카로운 은색 칼날
+        this._fillStrokeRoundRect(ctx, -13, -15, 20, 9, 3, '#eab308', OUTLINE_COLOR, 2);
+        // 칼날 슬라이더 홈
+        ctx.fillStyle = '#713f12';
+        ctx.fillRect(-10, -12, 12, 2.5);
+        // 돌출된 은색 커터 칼날
+        ctx.fillStyle = '#e2e8f0';
+        ctx.strokeStyle = OUTLINE_COLOR;
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(7, -14);
+        ctx.lineTo(15, -14);
+        ctx.lineTo(11, -7);
+        ctx.lineTo(7, -7);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      } else if (item.typeId === 'weapon_hammer') {
+        // Phase 16: 대형 망치 - 묵직한 오함마 철재 헤드 + 목재 손잡이
+        ctx.save();
+        ctx.rotate(-0.35);
+        // 긴 나무 자루
+        this._fillStrokeRoundRect(ctx, -3, -26, 6, 26, 2, '#92400e', OUTLINE_COLOR, 1.8);
+        // 철제 둔기 헤드
+        this._fillStrokeRoundRect(ctx, -11, -29, 22, 12, 3, '#475569', OUTLINE_COLOR, 2.4);
+        // 헤드 측면 충격판
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillRect(-9, -27, 18, 8);
+        ctx.restore();
+      } else if (item.typeId === 'weapon_stun_baton') {
+        // Phase 16: 전기 충격봉 - 고압 방전봉 본체 + 네온 블루 방전 링
+        ctx.save();
+        ctx.rotate(0.35);
+        // 절연 고무 손잡이
+        this._fillStrokeRoundRect(ctx, -3, -12, 6, 14, 2, '#0f172a', OUTLINE_COLOR, 1.8);
+        // 고압 방전 코어 바디
+        this._fillStrokeRoundRect(ctx, -3.5, -28, 7, 16, 2.5, '#0284c7', OUTLINE_COLOR, 2.2);
+        // 번개 네온 하이라이트
+        ctx.fillStyle = '#7dd3fc';
+        ctx.fillRect(-2, -26, 4, 12);
+        ctx.restore();
+      } else if (item.typeId === 'weapon_pistol') {
+        // Phase 16: 사무용 권총 - 스틸 리볼버 바디 + 목재 그립
+        // 총열 및 몸체
+        this._fillStrokeRoundRect(ctx, -10, -18, 20, 8, 2.5, '#334155', OUTLINE_COLOR, 2);
+        // 회전 탄창 실린더
+        this._fillStrokeRoundRect(ctx, -5, -19, 8, 10, 2, '#64748b', OUTLINE_COLOR, 1.5);
+        // 손잡이 그립
+        ctx.save();
+        ctx.rotate(0.3);
+        this._fillStrokeRoundRect(ctx, -10, -11, 7, 11, 2, '#78350f', OUTLINE_COLOR, 1.8);
+        ctx.restore();
+      } else if (item.typeId === 'weapon_shotgun') {
+        // Phase 16: 산탄총 - 긴 이중 총열 + 개머리판
+        // 이중 총열
+        this._fillStrokeRoundRect(ctx, -6, -17, 20, 6, 2, '#475569', OUTLINE_COLOR, 2);
+        // 펌프 장전 손잡이
+        this._fillStrokeRoundRect(ctx, 2, -15, 7, 5, 1.5, '#92400e', OUTLINE_COLOR, 1.4);
+        // 목재 개머리판
+        this._fillStrokeRoundRect(ctx, -16, -15, 11, 8, 2.5, '#78350f', OUTLINE_COLOR, 1.8);
+      } else if (item.typeId === 'weapon_doc_launcher') {
+        // Phase 16: 서류 발사기 - 서류 급지통 + 압축 공기 배럴
+        this._fillStrokeRoundRect(ctx, -12, -20, 24, 18, 4, '#1e293b', OUTLINE_COLOR, 2.4);
+        // 전면 급지 슬릿
+        this._fillStrokeRoundRect(ctx, 6, -15, 7, 8, 2, '#38bdf8', OUTLINE_COLOR, 1.6);
+        // 적재된 A4 서류 묶음
+        this._fillStrokeRoundRect(ctx, -8, -17, 12, 12, 1.5, '#f8fafc', OUTLINE_COLOR, 1.5);
+        ctx.strokeStyle = '#94a3b8';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(-5, -13);
+        ctx.lineTo(1, -13);
+        ctx.moveTo(-5, -9);
+        ctx.lineTo(0, -9);
+        ctx.stroke();
       } else {
-        // 2. 무기 강화 모듈: 전술 금속 모듈 케이스 + 황금빛 강화 코어 & 상승 화살표(▲) 도형
+        // 5. 무기 강화 모듈: 전술 금속 모듈 케이스 + 황금빛 강화 코어 & 상승 화살표(▲) 도형
         this._fillStrokeRoundRect(ctx, -14, -20, 28, 20, 5, '#1e293b', OUTLINE_COLOR, 2.4);
         this._fillStrokeRoundRect(ctx, -10.5, -16.5, 21, 13, 3, '#0f172a', '#475569', 1.5);
 
@@ -2824,12 +3160,19 @@
 
       // 비포커스 상태에서는 도형 바로 위에 기본 이름 표시 (포커스 시에는 캐릭터에 가리지 않도록 상단 레이어에 [E] 표시)
       if (!isFocused) {
+        let labelColor = '#bbf7d0';
+        if (item.typeId === 'overtime_pay') labelColor = '#fde047';
+        else if (item.typeId === 'overtime_sneakers') labelColor = '#7dd3fc';
+        else if (item.typeId === 'bulletproof_folder') labelColor = '#d8b4fe';
+        else if (item.typeId === 'weapon_upgrade_module') labelColor = '#fed7aa';
+        else if (item.category === 'weapon') labelColor = item.weaponId === 'hammer' ? '#f59e0b' : item.weaponId === 'stun_baton' ? '#38bdf8' : '#fde047';
+
         ctx.font = '700 10px "Malgun Gothic", sans-serif';
         ctx.textAlign = 'center';
         ctx.strokeStyle = OUTLINE_COLOR;
         ctx.lineWidth = 3;
         ctx.strokeText(item.name, 0, -29);
-        ctx.fillStyle = item.category === 'heal' ? '#bbf7d0' : '#fed7aa';
+        ctx.fillStyle = labelColor;
         ctx.fillText(item.name, 0, -29);
       }
 

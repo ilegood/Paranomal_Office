@@ -6,36 +6,148 @@
   /**
    * 무기 밸런스 설정값 (추후 밸런스 조정을 위해 별도 상수 객체로 분리 관리)
    */
+  /**
+   * Phase 16: 무기 데이터 구조 (무기 정보를 별도 데이터 구조로 분리 관리)
+   * 고유 ID, 무기 이름, 종류(melee/ranged), 슬롯(1/2), 공격력, 공격 속도(쿨다운),
+   * 공격 범위/투사체 속도, 탄약 여부, 무기 설명, 무기별 특수 효과
+   */
   const WEAPON_CONFIGS = {
-    melee: {
-      id: 'melee',
+    // 근접 무기 1: 사무용 커터 (기본 근접 무기, 빠른 공속, 짧은 사거리)
+    cutter: {
+      id: 'cutter',
       slot: 1,
-      name: '대형 사무용 스테이플러',
-      attackModeText: '근접 · 부채꼴 타격',
+      name: '사무용 커터',
+      attackModeText: '근접 · 고속 베기',
       type: 'melee',
-      damage: 25,
-      range: 55, // 공격 거리: 약 55px
-      arcDegrees: 100, // 공격 각도: 약 100도
-      cooldown: 0.5, // 공격 쿨다운: 0.5초
-      activeDuration: 0.14, // 공격 판정 유지 시간(초)
-      visualDuration: 0.2, // 시각 이펙트 표시 시간(초)
-      usesAmmo: false
+      damage: 22,
+      range: 48, // 짧은 공격 범위 (48px)
+      arcDegrees: 95, // 95도
+      cooldown: 0.30, // 빠른 공격 속도 (0.30초)
+      activeDuration: 0.11,
+      visualDuration: 0.16,
+      usesAmmo: false,
+      description: '예리하게 갈아낸 대형 커터칼. 짧은 사거리 대신 매우 빠른 속도로 연속 타격을 가합니다.',
+      specialEffect: {
+        kind: 'fast_slash',
+        desc: '빠른 연타 속도 (0.30초 쿨다운)'
+      }
     },
-    ranged: {
-      id: 'ranged',
+
+    // 근접 무기 2: 대형 망치 (높은 공격력, 느린 공속, 넓은 사거리, 강한 타격 피드백)
+    hammer: {
+      id: 'hammer',
+      slot: 1,
+      name: '대형 망치',
+      attackModeText: '근접 · 광역 분쇄',
+      type: 'melee',
+      damage: 55, // 매우 높은 공격력 (55)
+      range: 75, // 넓은 공격 범위 (75px)
+      arcDegrees: 140, // 넓은 부채꼴 각도 (140도)
+      cooldown: 0.85, // 느린 공격 속도 (0.85초)
+      activeDuration: 0.22,
+      visualDuration: 0.30,
+      usesAmmo: false,
+      description: '철거 및 시설 보수용 육중한 오함마. 묵직하고 느리지만 광범위의 적을 분쇄합니다.',
+      specialEffect: {
+        kind: 'heavy_crush',
+        desc: '강력한 타격력 (55 dmg) · 광범위 분쇄 (140°)'
+      }
+    },
+
+    // 근접 무기 3: 전기 충격봉 (중간 공격력, 빠른 공속, 일반 적 0.6초 경직 - 보스 면역)
+    stun_baton: {
+      id: 'stun_baton',
+      slot: 1,
+      name: '전기 충격봉',
+      attackModeText: '근접 · 고압 방전',
+      type: 'melee',
+      damage: 30, // 중간 공격력 (30)
+      range: 58,
+      arcDegrees: 105,
+      cooldown: 0.45, // 준수한 공격 속도
+      activeDuration: 0.14,
+      visualDuration: 0.20,
+      usesAmmo: false,
+      description: '방범 순찰용 고압 전기 충격기. 타격 시 일반 적을 0.6초간 마비 경직시킵니다. (보스 면역)',
+      specialEffect: {
+        kind: 'stun',
+        stunDuration: 0.60,
+        desc: '적에게 0.6초간 경직 효과 부여 (보스 면역)'
+      }
+    },
+
+    // 원거리 무기 1: 권총 (기본 원거리 무기, 단일 투사체 안정 사격)
+    pistol: {
+      id: 'pistol',
       slot: 2,
       name: '사무용 권총',
       attackModeText: '원거리 · 투사체 발사',
       type: 'ranged',
-      damage: 15,
-      maxAmmo: 20, // 기본 탄약: 20발
-      cooldown: 0.25, // 발사 간격: 0.25초
-      projectileSpeed: 620, // 투사체 이동 속도 (px/sec)
-      projectileRadius: 5, // 투사체 충돌 반경 (px)
-      muzzleOffset: 12, // 플레이어 중심으로부터 발사 시작 거리 (벽 끼임 방지)
-      usesAmmo: true
+      damage: 16,
+      maxAmmo: 24,
+      cooldown: 0.25,
+      projectileSpeed: 640,
+      projectileRadius: 5,
+      muzzleOffset: 12,
+      usesAmmo: true,
+      description: '야간 긴급 호신용 리볼버 권총. 안정적인 사거리와 탄속으로 단일 적을 저격합니다.',
+      specialEffect: {
+        kind: 'single_shot',
+        desc: '안정적인 탄속의 단일 정밀 사격'
+      }
+    },
+
+    // 원거리 무기 2: 산탄총 (1회 공격 시 5발 산탄 발사, 근접 고피해, 거리별 감쇄, 1회당 1발 소모)
+    shotgun: {
+      id: 'shotgun',
+      slot: 2,
+      name: '산탄총',
+      attackModeText: '원거리 · 5방향 산탄',
+      type: 'ranged',
+      damage: 10, // 펠릿당 10 (5발 적중 시 최대 50 데미지)
+      pelletCount: 5,
+      spreadDegrees: 28,
+      maxAmmo: 12,
+      cooldown: 0.65,
+      projectileSpeed: 580,
+      projectileRadius: 4.5,
+      muzzleOffset: 14,
+      maxRange: 240,
+      minDamageRatio: 0.4,
+      usesAmmo: true, // 1회 공격 시 1발 소모
+      description: '5발의 산탄 펠릿을 부채꼴로 일제 발사합니다. 초근접 시 치명적인 폭딜을 가합니다.',
+      specialEffect: {
+        kind: 'spread',
+        pelletCount: 5,
+        desc: '5발 부채꼴 산탄 (초근접 고피해, 거리별 감쇄, 1발 소모)'
+      }
+    },
+
+    // 원거리 무기 3: 서류 발사기 (초고속 연사, 낮은 개별 피해, 빠른 탄약 소모, 다수 적 견제)
+    doc_launcher: {
+      id: 'doc_launcher',
+      slot: 2,
+      name: '서류 발사기',
+      attackModeText: '원거리 · 고속 서류 난사',
+      type: 'ranged',
+      damage: 8,
+      maxAmmo: 50,
+      cooldown: 0.10, // 초당 10발 초고속 연사
+      projectileSpeed: 680,
+      projectileRadius: 5,
+      muzzleOffset: 12,
+      usesAmmo: true,
+      description: '압축 공기로 날카로운 결재 서류를 난사하는 기관총형 발사기. 다수의 적을 제압합니다.',
+      specialEffect: {
+        kind: 'rapid_fire',
+        desc: '0.10초 초고속 연사 (다수 적 제압, 빠른 탄약 소모)'
+      }
     }
   };
+
+  // 이전 버전 및 별칭 호환
+  WEAPON_CONFIGS.melee = WEAPON_CONFIGS.cutter;
+  WEAPON_CONFIGS.ranged = WEAPON_CONFIGS.pistol;
 
   /**
    * 무기 강화 시스템 설정값 (기본 데미지와 분리 관리)
@@ -121,28 +233,30 @@
       // Phase 13: 캐릭터 고유 공격력 배율 (퇴마 담당의 근접 +20% 등)
       this.meleeDamageMultiplier = Number(options.meleeDamageMultiplier) || 1.0;
       this.rangedDamageMultiplier = Number(options.rangedDamageMultiplier) || 1.0;
+      // Phase 15: 런 중 공격력 강화 보너스 (야근 수당 아이템 획득 시 합연산 누적)
+      this.runAttackBonusPercent = 0;
 
       // 슬롯별 런타임 무기 상태 초기화 (기본 데미지와 강화 단계를 별도 분리 관리)
       this.weapons = {
         1: {
-          config: WEAPON_CONFIGS.melee,
-          baseDamage: WEAPON_CONFIGS.melee.damage,
+          config: WEAPON_CONFIGS.cutter,
+          baseDamage: WEAPON_CONFIGS.cutter.damage,
           upgradeLevel: 0,
           ammo: null,
           maxAmmo: null,
           cooldownRemaining: 0
         },
         2: {
-          config: WEAPON_CONFIGS.ranged,
-          baseDamage: WEAPON_CONFIGS.ranged.damage,
+          config: WEAPON_CONFIGS.pistol,
+          baseDamage: WEAPON_CONFIGS.pistol.damage,
           upgradeLevel: 0,
-          ammo: WEAPON_CONFIGS.ranged.maxAmmo,
-          maxAmmo: WEAPON_CONFIGS.ranged.maxAmmo,
+          ammo: WEAPON_CONFIGS.pistol.maxAmmo,
+          maxAmmo: WEAPON_CONFIGS.pistol.maxAmmo,
           cooldownRemaining: 0
         }
       };
 
-      this.currentSlot = 1; // 기본 장착: 1번 근접 무기(대형 사무용 스테이플러)
+      this.currentSlot = 1; // 기본 장착: 1번 근접 무기(사무용 커터)
 
       // 활성 근접 공격 판정 목록 (피격 판정 전용, 시각 효과와 분리)
       this.meleeSwings = [];
@@ -205,7 +319,9 @@
       const multiplier = slot === 1
         ? (this.meleeDamageMultiplier || 1.0)
         : (this.rangedDamageMultiplier || 1.0);
-      return Math.round(rawDmg * multiplier);
+      // Phase 15: 런 중 공격력 강화(야근 수당) 기본 공격력 기준 합연산 누적 적용 (+15%p씩 누적)
+      const runMultiplier = 1 + (this.runAttackBonusPercent || 0) / 100;
+      return Math.round(rawDmg * multiplier * runMultiplier);
     }
 
     /**
@@ -260,6 +376,36 @@
       }
       this.currentSlot = slot;
       return true;
+    }
+
+    /**
+     * Phase 16: 신규 무기 획득 및 장착 (기존 동일 슬롯 무기 대체, 탄약 및 상태 완전 초기화, 강화 단계 계승)
+     * @param {string} weaponId 무기 고유 ID (cutter, hammer, stun_baton, pistol, shotgun, doc_launcher)
+     */
+    equipWeapon(weaponId) {
+      const cfg = WEAPON_CONFIGS[weaponId];
+      if (!cfg) {
+        return null;
+      }
+
+      const slot = cfg.slot; // 1: 근접, 2: 원거리
+      const prevWeapon = this.weapons[slot];
+
+      // 새 무기 상태로 완전히 교체 (기존 무기 잔여 탄약 및 쿨다운 오염 원천 차단)
+      this.weapons[slot] = {
+        config: cfg,
+        baseDamage: cfg.damage,
+        upgradeLevel: this.upgradeLevel, // 현재 무기 강화 단계 정상 계승
+        ammo: cfg.usesAmmo ? cfg.maxAmmo : null,
+        maxAmmo: cfg.usesAmmo ? cfg.maxAmmo : null,
+        cooldownRemaining: 0
+      };
+
+      return {
+        slot,
+        weapon: this.weapons[slot],
+        prevWeapon
+      };
     }
 
     /**
@@ -319,7 +465,9 @@
         elapsed: 0,
         activeDuration: cfg.activeDuration,
         isHitboxActive: true,
-        hitTargetIds: new Set()
+        hitTargetIds: new Set(),
+        weaponId: cfg.id,
+        specialEffect: cfg.specialEffect
       };
 
       this.meleeSwings.push(swing);
@@ -340,39 +488,85 @@
         arcRad,
         maxRadius: cfg.range,
         elapsed: 0,
-        duration: cfg.visualDuration
+        duration: cfg.visualDuration,
+        weaponId: cfg.id
       });
     }
 
     _performRangedAttack(player, weaponState, officeMap, aliveEnemies = [], boss = null) {
       const cfg = weaponState.config;
+      // 1회 공격 시 1발 소모 (산탄총의 5발 펠릿도 1발 소모)
       weaponState.ammo = Math.max(0, weaponState.ammo - 1);
       weaponState.cooldownRemaining = cfg.cooldown;
 
-      const dirX = player.direction.x;
-      const dirY = player.direction.y;
-
-      const startX = player.position.x + dirX * cfg.muzzleOffset;
-      const startY = player.position.y + dirY * cfg.muzzleOffset;
       const effectiveDamage = this.getWeaponDamage(cfg.slot);
 
-      const projectile = {
-        x: startX,
-        y: startY,
-        prevX: startX,
-        prevY: startY,
-        vx: dirX * cfg.projectileSpeed,
-        vy: dirY * cfg.projectileSpeed,
-        speed: cfg.projectileSpeed,
-        angle: player.direction.angle,
-        radius: cfg.projectileRadius,
-        damage: effectiveDamage,
-        alive: true
-      };
+      if (cfg.id === 'shotgun') {
+        // 산탄총: 5발 동시 확산 발사
+        const count = cfg.pelletCount || 5;
+        const totalSpreadRad = ((cfg.spreadDegrees || 28) * Math.PI) / 180;
+        const startSpread = player.direction.angle - totalSpreadRad * 0.5;
+        const stepSpread = totalSpreadRad / Math.max(1, count - 1);
 
-      // 발사 위치가 이미 벽/장애물/타겟/적/보스에 닿아 있는 초근접 상태인지 즉시 검사
-      if (!this._checkProjectileCollision(projectile, officeMap, aliveEnemies, boss)) {
-        this.projectiles.push(projectile);
+        for (let p = 0; p < count; p++) {
+          const pelletAngle = startSpread + stepSpread * p;
+          const pDirX = Math.cos(pelletAngle);
+          const pDirY = Math.sin(pelletAngle);
+          const startX = player.position.x + pDirX * cfg.muzzleOffset;
+          const startY = player.position.y + pDirY * cfg.muzzleOffset;
+
+          const projectile = {
+            x: startX,
+            y: startY,
+            prevX: startX,
+            prevY: startY,
+            startX,
+            startY,
+            vx: pDirX * cfg.projectileSpeed,
+            vy: pDirY * cfg.projectileSpeed,
+            speed: cfg.projectileSpeed,
+            angle: pelletAngle,
+            radius: cfg.projectileRadius,
+            damage: effectiveDamage,
+            baseDamage: effectiveDamage,
+            maxRange: cfg.maxRange || 240,
+            minDamageRatio: cfg.minDamageRatio || 0.4,
+            weaponId: 'shotgun',
+            alive: true
+          };
+
+          if (!this._checkProjectileCollision(projectile, officeMap, aliveEnemies, boss)) {
+            this.projectiles.push(projectile);
+          }
+        }
+      } else {
+        // 단일 투사체 발사 (사무용 권총, 서류 발사기)
+        const dirX = player.direction.x;
+        const dirY = player.direction.y;
+        const startX = player.position.x + dirX * cfg.muzzleOffset;
+        const startY = player.position.y + dirY * cfg.muzzleOffset;
+
+        const projectile = {
+          x: startX,
+          y: startY,
+          prevX: startX,
+          prevY: startY,
+          startX,
+          startY,
+          vx: dirX * cfg.projectileSpeed,
+          vy: dirY * cfg.projectileSpeed,
+          speed: cfg.projectileSpeed,
+          angle: player.direction.angle,
+          radius: cfg.projectileRadius,
+          damage: effectiveDamage,
+          baseDamage: effectiveDamage,
+          weaponId: cfg.id,
+          alive: true
+        };
+
+        if (!this._checkProjectileCollision(projectile, officeMap, aliveEnemies, boss)) {
+          this.projectiles.push(projectile);
+        }
       }
     }
 
@@ -491,7 +685,7 @@
         }
 
         swing.hitTargetIds.add(entity.id);
-        this._applyHitToTarget(entity, swing.damage, 'melee', cosDir);
+        this._applyHitToTarget(entity, swing.damage, 'melee', cosDir, swing.specialEffect, swing.weaponId);
       }
     }
 
@@ -515,6 +709,19 @@
         for (let s = 0; s < steps; s++) {
           proj.x += proj.vx * stepDt;
           proj.y += proj.vy * stepDt;
+
+          // Phase 16: 산탄총 거리 비례 데미지 감쇄 및 최대 사거리 소멸 판정
+          if (proj.weaponId === 'shotgun') {
+            const dist = Math.hypot(proj.x - proj.startX, proj.y - proj.startY);
+            if (dist >= proj.maxRange) {
+              proj.alive = false;
+              break;
+            }
+            // 70px 이하 100%, 70~240px 구간에서 40%까지 선형 감소
+            const dropT = Math.max(0, Math.min(1, (dist - 70) / (proj.maxRange - 70)));
+            const ratio = 1.0 - (1.0 - (proj.minDamageRatio || 0.4)) * dropT;
+            proj.damage = Math.max(1, Math.round(proj.baseDamage * ratio));
+          }
 
           if (this._checkProjectileCollision(proj, officeMap, aliveEnemies, boss)) {
             proj.alive = false;
@@ -558,6 +765,15 @@
         }
       }
 
+      // 투사체별 충돌 불꽃 색상 및 크기
+      const sparkColor =
+        proj.weaponId === 'shotgun'
+          ? '#f97316'
+          : proj.weaponId === 'doc_launcher'
+            ? '#e2e8f0'
+            : '#38bdf8';
+      const sparkSize = proj.weaponId === 'shotgun' ? 14 : 12;
+
       // 3. 임시 테스트 타겟 충돌 검사
       for (let i = 0; i < this.targets.length; i++) {
         const target = this.targets[i];
@@ -568,8 +784,8 @@
         const dist = Math.hypot(proj.x - target.position.x, proj.y - target.position.y);
         if (dist <= r + target.radius) {
           const hitDirX = proj.vx >= 0 ? 1 : -1;
-          this._applyHitToTarget(target, proj.damage, 'ranged', hitDirX);
-          this._spawnImpactEffect(proj.x, proj.y - 20, '#38bdf8', 13);
+          this._applyHitToTarget(target, proj.damage, 'ranged', hitDirX, null, proj.weaponId);
+          this._spawnImpactEffect(proj.x, proj.y - 20, sparkColor, sparkSize);
           return true;
         }
       }
@@ -584,8 +800,8 @@
         const dist = Math.hypot(proj.x - enemy.position.x, proj.y - enemy.position.y);
         if (dist <= r + enemy.radius) {
           const hitDirX = proj.vx >= 0 ? 1 : -1;
-          this._applyHitToTarget(enemy, proj.damage, 'ranged', hitDirX);
-          this._spawnImpactEffect(proj.x, proj.y - 22, '#38bdf8', 15);
+          this._applyHitToTarget(enemy, proj.damage, 'ranged', hitDirX, null, proj.weaponId);
+          this._spawnImpactEffect(proj.x, proj.y - 22, sparkColor, sparkSize + 2);
           return true;
         }
       }
@@ -596,8 +812,8 @@
         const dist = Math.hypot(proj.x - boss.position.x, proj.y - boss.position.y);
         if (dist <= r + bossRad) {
           const hitDirX = proj.vx >= 0 ? 1 : -1;
-          this._applyHitToTarget(boss, proj.damage, 'ranged', hitDirX);
-          this._spawnImpactEffect(proj.x, proj.y - 25, '#38bdf8', 18);
+          this._applyHitToTarget(boss, proj.damage, 'ranged', hitDirX, null, proj.weaponId);
+          this._spawnImpactEffect(proj.x, proj.y - 25, sparkColor, sparkSize + 5);
           return true;
         }
       }
@@ -605,16 +821,43 @@
       return false;
     }
 
-    _applyHitToTarget(target, damage, attackKind, hitDirX) {
+    _applyHitToTarget(target, damage, attackKind, hitDirX, specialEffect = null, weaponId = null) {
       target.takeDamage(damage, hitDirX);
+
+      // Phase 16: 전기 충격봉 스턴 부여 (보스는 면역)
+      if (specialEffect && specialEffect.kind === 'stun' && typeof target.applyStun === 'function') {
+        const stunApplied = target.applyStun(specialEffect.stunDuration || 0.6);
+        if (stunApplied) {
+          const stunOffsetY = target.isBoss ? -130 : target.isEnemy ? -110 : -95;
+          this.damagePopups.push({
+            x: target.position.x,
+            y: target.position.y + stunOffsetY,
+            text: '⚡ 경직!',
+            color: '#38bdf8',
+            elapsed: 0,
+            duration: 0.65,
+            isNotice: true
+          });
+          this._spawnImpactEffect(target.position.x, target.position.y - 20, '#38bdf8', 20);
+        }
+      }
 
       // 피해량 확인용 플로팅 데미지 텍스트 생성 (상단 체력 표시 위쪽에서 떠오름)
       const popupOffsetY = target.isBoss ? -112 : target.isEnemy ? -92 : -82;
+      let textColor = attackKind === 'melee' ? '#fbbf24' : '#38bdf8';
+      if (weaponId === 'hammer') {
+        textColor = '#f59e0b';
+      } else if (weaponId === 'shotgun') {
+        textColor = '#f97316';
+      } else if (weaponId === 'doc_launcher') {
+        textColor = '#e0f2fe';
+      }
+
       this.damagePopups.push({
         x: target.position.x + (Math.random() - 0.5) * 10,
         y: target.position.y + popupOffsetY,
         text: `-${damage}`,
-        color: attackKind === 'melee' ? '#fbbf24' : '#38bdf8',
+        color: textColor,
         elapsed: 0,
         duration: 0.65,
         isNotice: false
@@ -622,7 +865,13 @@
 
       if (attackKind === 'melee') {
         const sparkY = target.isBoss ? target.position.y - 28 : target.position.y - 22;
-        this._spawnImpactEffect(target.position.x, sparkY, '#fbbf24', target.isBoss ? 22 : 16);
+        const sparkColor =
+          weaponId === 'hammer' ? '#f59e0b' : weaponId === 'stun_baton' ? '#38bdf8' : '#fbbf24';
+        const sparkRadius =
+          weaponId === 'hammer'
+            ? (target.isBoss ? 32 : 24)
+            : (target.isBoss ? 22 : 16);
+        this._spawnImpactEffect(target.position.x, sparkY, sparkColor, sparkRadius);
       }
 
       // 체력이 0이 되어 처치/제거될 때 연출 이펙트
@@ -716,7 +965,9 @@
         cooldownRemaining: ws.cooldownRemaining,
         cooldownTotal: cfg.cooldown,
         cooldownRatio,
-        isReady: ws.cooldownRemaining <= 0 && (!cfg.usesAmmo || ws.ammo > 0)
+        isReady: ws.cooldownRemaining <= 0 && (!cfg.usesAmmo || ws.ammo > 0),
+        description: cfg.description || '',
+        specialDesc: cfg.specialEffect?.desc || ''
       };
     }
   }

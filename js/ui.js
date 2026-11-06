@@ -77,6 +77,15 @@
       this.charItemsListEl = document.getElementById('char-items-list');
       this.charCloseBtnEl = document.getElementById('char-close-btn');
 
+      // Phase 15: 런 중 적용 버프 칩 및 결과 화면 획득 아이템 목록 요소
+      this.hudRunBuffsEl = document.getElementById('hud-run-buffs');
+      this.buffChipAtkEl = document.getElementById('buff-chip-atk');
+      this.buffChipDashEl = document.getElementById('buff-chip-dash');
+      this.buffChipDefEl = document.getElementById('buff-chip-def');
+
+      this.gameOverItemsEl = document.getElementById('game-over-stat-items');
+      this.victoryItemsEl = document.getElementById('victory-stat-items');
+
       this.characterSystem = PO.characterSystem || null;
       this.onCharacterChanged = null;
 
@@ -102,6 +111,7 @@
       this.slotTab2El = document.getElementById('slot-tab-2');
       this.weaponNameEl = document.getElementById('weapon-name');
       this.weaponModeEl = document.getElementById('weapon-mode');
+      this.weaponPerkTextEl = document.getElementById('weapon-perk-text');
       this.weaponUpgradeTextEl = document.getElementById('weapon-upgrade-text');
       this.weaponDamageTextEl = document.getElementById('weapon-damage-text');
       this.weaponAmmoRowEl = document.getElementById('weapon-ammo-row');
@@ -535,6 +545,23 @@
     }
 
     /**
+     * Phase 15: 런 중 획득한 아이템 내역을 가독성 높은 요약 문자열로 포맷팅
+     */
+    _formatRunItems(items) {
+      if (!Array.isArray(items) || items.length === 0) {
+        return '없음 (획득한 아이템 없음)';
+      }
+      const counts = {};
+      items.forEach((it) => {
+        const name = it.name || it.typeId || '아이템';
+        counts[name] = (counts[name] || 0) + 1;
+      });
+      return Object.entries(counts)
+        .map(([name, count]) => (count > 1 ? `${name} x${count}` : `${name}`))
+        .join(' · ');
+    }
+
+    /**
      * Phase 11 & 12: 탈출 성공(Victory) 결과 화면 표시
      */
     showVictory(stats = {}) {
@@ -551,6 +578,11 @@
       }
       if (this.victoryEquipmentEl) {
         this.victoryEquipmentEl.textContent = stats.equipment || '기본 장비';
+      }
+
+      // Phase 15: 런 중 획득한 아이템 내역 표시
+      if (this.victoryItemsEl) {
+        this.victoryItemsEl.textContent = this._formatRunItems(stats.runItems);
       }
 
       // Phase 12: 이번 런 획득 수당 및 총 보유 수당 표시
@@ -602,6 +634,10 @@
           const totalAmt = stats.totalCurrency ?? (this.meta ? this.meta.getCurrency() : 0);
           this.gameOverTotalEl.textContent = `₩${totalAmt.toLocaleString()}`;
         }
+        // Phase 15: 런 중 획득한 아이템 내역 표시
+        if (this.gameOverItemsEl) {
+          this.gameOverItemsEl.textContent = this._formatRunItems(stats.runItems);
+        }
         this.updateCurrencyDisplay();
       }
     }
@@ -651,6 +687,64 @@
       this._syncItems(effectiveGameOver ? null : itemUIState, effectiveGameOver ? null : escapePrompt);
       this._syncCombatRoom(effectiveGameOver ? null : combatRoomUIState);
       this._syncBoss(effectiveGameOver ? null : bossUIState);
+      this._syncRunBuffs(player);
+    }
+
+    /**
+     * Phase 15: 현재 플레이어에게 적용 중인 런 버프 칩(공격력, 대시 쿨다운, 피해 감소)을 HUD에 실시간 표시
+     */
+    _syncRunBuffs(player) {
+      if (!this.hudRunBuffsEl || !player) {
+        return;
+      }
+
+      const buffs = player.runBuffs;
+      if (!buffs) {
+        this.hudRunBuffsEl.hidden = true;
+        return;
+      }
+
+      let hasAny = false;
+
+      // 1. 공격력 강화 칩 (야근 수당: +15%p 합연산 누적)
+      if (this.buffChipAtkEl) {
+        const atkPct = buffs.attackBonusPercent || 0;
+        if (atkPct > 0) {
+          this.buffChipAtkEl.hidden = false;
+          this.buffChipAtkEl.textContent = `⚔️ +${atkPct}%`;
+          hasAny = true;
+        } else {
+          this.buffChipAtkEl.hidden = true;
+        }
+      }
+
+      // 2. 대시 쿨다운 감소 칩 (잔업용 운동화: 곱연산)
+      if (this.buffChipDashEl) {
+        const dashMult = buffs.dashCooldownMultiplier || 1.0;
+        if (dashMult < 0.999) {
+          const dashPct = Math.round((1 - dashMult) * 100);
+          this.buffChipDashEl.hidden = false;
+          this.buffChipDashEl.textContent = `⚡ -${dashPct}%`;
+          hasAny = true;
+        } else {
+          this.buffChipDashEl.hidden = true;
+        }
+      }
+
+      // 3. 받는 피해 감소 칩 (방탄 서류철: 곱연산 점감)
+      if (this.buffChipDefEl) {
+        const defMult = buffs.damageTakenMultiplier || 1.0;
+        if (defMult < 0.999) {
+          const defPct = Math.round((1 - defMult) * 100);
+          this.buffChipDefEl.hidden = false;
+          this.buffChipDefEl.textContent = `🛡️ -${defPct}%`;
+          hasAny = true;
+        } else {
+          this.buffChipDefEl.hidden = true;
+        }
+      }
+
+      this.hudRunBuffsEl.hidden = !hasAny;
     }
 
     _syncHealth(hp, maxHp, isHurt = false) {
@@ -741,8 +835,10 @@
     }
 
     _syncCombat(combatState) {
-      // 1. 장착 무기 슬롯, 이름, 공격 방식 갱신
-      if (combatState.slot !== this._lastWeaponSlot) {
+      // 1. 장착 무기 슬롯, 이름, 공격 방식, 특수 효과 갱신
+      const weaponSig = `${combatState.slot}|${combatState.weaponId}|${combatState.weaponName}|${combatState.specialDesc}`;
+      if (weaponSig !== this._lastWeaponSig) {
+        this._lastWeaponSig = weaponSig;
         this._lastWeaponSlot = combatState.slot;
 
         if (this.slotTab1El) {
@@ -756,6 +852,9 @@
         }
         if (this.weaponModeEl) {
           this.weaponModeEl.textContent = combatState.attackModeText;
+        }
+        if (this.weaponPerkTextEl) {
+          this.weaponPerkTextEl.textContent = combatState.specialDesc || '-';
         }
       }
 

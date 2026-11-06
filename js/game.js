@@ -217,6 +217,21 @@
           ? new PO.Boss(this.map.bossSpawn)
           : null;
 
+      // Phase 15: 적 및 보스 처치 시 런 아이템 드롭 연동
+      this.enemies.onEnemyDefeated = (enemy) => {
+        if (this.items && typeof this.items.rollEnemyDrop === 'function') {
+          this.items.rollEnemyDrop(enemy, enemy.position.x, enemy.position.y);
+        }
+      };
+
+      if (this.boss) {
+        this.boss.onDeath = (boss) => {
+          if (this.items && typeof this.items.rollEnemyDrop === 'function') {
+            this.items.rollEnemyDrop({ isBoss: true, name: boss.name }, boss.position.x, boss.position.y);
+          }
+        };
+      }
+
       // Phase 9 & 10: 전투 방/보스 방 상태(Unvisited / Active / Cleared), 문 잠금 및 방별 적 수 추적 초기화
       this.combatRooms = PO.CombatRoomSystem
         ? new PO.CombatRoomSystem(this.map, this.enemies, {}, this.boss)
@@ -321,10 +336,15 @@
       }
       this.lastRunReward = rewardData;
 
+      const runItems = this.player && this.player.runBuffs ? this.player.runBuffs.itemsCollected : [];
+      const runBuffs = this.player && this.player.runBuffs ? this.player.runBuffs : null;
+
       this.ui.setGameOver(true, {
         kills,
         earnedCurrency: rewardData.totalReward,
-        totalCurrency: rewardData.newBalance
+        totalCurrency: rewardData.newBalance,
+        runItems,
+        runBuffs
       });
     }
 
@@ -380,12 +400,19 @@
       let equipmentStr = '기본 장비';
       if (this.combat) {
         const upLevel = this.combat.upgradeLevel || 0;
+        const w1 = this.combat.weapons[1];
+        const w2 = this.combat.weapons[2];
+        const meleeName = w1?.config?.name || '근접 무기';
+        const rangedName = w2?.config?.name || '원거리 무기';
         const meleeDmg = this.combat.getWeaponDamage(1);
         const rangedDmg = this.combat.getWeaponDamage(2);
-        const pistolAmmo = this.combat.weapons[2] ? this.combat.weapons[2].ammo : 0;
+        const rangedAmmo = w2 ? (w2.ammo !== null ? `${w2.ammo}발` : '무제한') : '0발';
         const upgradeBonus = upLevel > 0 ? ` (+${upLevel * 25}% 강화)` : '';
-        equipmentStr = `스테이플러 (${meleeDmg} dmg) · 권총 (${rangedDmg} dmg, ${pistolAmmo}발)${upgradeBonus}`;
+        equipmentStr = `${meleeName} (${meleeDmg} dmg) · ${rangedName} (${rangedDmg} dmg, ${rangedAmmo})${upgradeBonus}`;
       }
+
+      const runItems = this.player && this.player.runBuffs ? this.player.runBuffs.itemsCollected : [];
+      const runBuffs = this.player && this.player.runBuffs ? this.player.runBuffs : null;
 
       this.ui.showVictory({
         runTime: formattedTime,
@@ -393,7 +420,9 @@
         bossKilled,
         equipment: equipmentStr,
         earnedCurrency: rewardData.totalReward,
-        totalCurrency: rewardData.newBalance
+        totalCurrency: rewardData.newBalance,
+        runItems,
+        runBuffs
       });
     }
 
@@ -453,11 +482,19 @@
         (cooldownAfterMeta * (charModifiers.dashCooldownMultiplier || 1.0)).toFixed(2)
       );
 
-      this.player.dash.cooldownTotal = finalDashCooldown;
+      this.player.baseDashCooldownBeforeBuffs = finalDashCooldown;
+      const runDashMult = this.player.runBuffs ? this.player.runBuffs.dashCooldownMultiplier : 1.0;
+      this.player.dash.cooldownTotal = Math.max(
+        0.3,
+        Number((finalDashCooldown * runDashMult).toFixed(2))
+      );
 
       if (this.combat) {
         this.combat.meleeDamageMultiplier = charModifiers.meleeDamageMultiplier || 1.0;
         this.combat.rangedDamageMultiplier = charModifiers.rangedDamageMultiplier || 1.0;
+        if (this.player.runBuffs) {
+          this.combat.runAttackBonusPercent = this.player.runBuffs.attackBonusPercent;
+        }
       }
     }
 
@@ -628,7 +665,8 @@
             this.items.tryInteract({
               player: this.player,
               combat: this.combat,
-              officeMap: this.map
+              officeMap: this.map,
+              game: this
             });
           }
         }

@@ -50,13 +50,20 @@
               </div>
               <button id="hud-open-char-btn" type="button" class="hud-char-btn" title="캐릭터 선택(인사 발령)">인사발령</button>
             </div>
+
+            <!-- Phase 15: 런 중 적용 버프 칩 컨테이너 -->
+            <div class="hud-run-buffs" id="hud-run-buffs" aria-label="현재 적용 중인 런 버프 목록" hidden>
+              <span id="buff-chip-atk" class="buff-chip is-atk" title="야근 수당: 공격력 증가 (합연산 누적)" hidden>⚔️ +0%</span>
+              <span id="buff-chip-dash" class="buff-chip is-dash" title="잔업용 운동화: 대시 쿨다운 감소 (곱연산)" hidden>⚡ -0%</span>
+              <span id="buff-chip-def" class="buff-chip is-def" title="방탄 서류철: 받는 피해 감소 (곱연산 점감)" hidden>🛡️ -0%</span>
+            </div>
           </section>
 
           <!-- 우측 상단: 프로토타입 배지, 실시간 전체 구역 미니맵 및 디버그 시드 표시(기본 숨김) -->
           <div class="hud-top-right">
             <aside class="hud-card prototype-badge">
               <span class="status-dot" aria-hidden="true"></span>
-              <span class="prototype-text">PROTOTYPE · Phase 14 (적 종류별 전투 행동 및 공격 패턴)</span>
+              <span class="prototype-text">PROTOTYPE · Phase 16 (무기 다양화 및 공격 특성)</span>
             </aside>
 
             <aside id="minimap-panel" class="hud-card minimap-panel" aria-label="전체 구역 미니맵">
@@ -160,8 +167,14 @@
             </div>
 
             <div class="weapon-info-main">
-              <div id="weapon-name" class="weapon-name">대형 사무용 스테이플러</div>
-              <div id="weapon-mode" class="weapon-mode">근접 · 부채꼴 타격</div>
+              <div id="weapon-name" class="weapon-name">사무용 커터</div>
+              <div id="weapon-mode" class="weapon-mode">근접 · 고속 베기</div>
+            </div>
+
+            <!-- Phase 16: 현재 무기 특수 효과 및 성능 설명 -->
+            <div id="weapon-perk-row" class="weapon-stat-row weapon-perk-row">
+              <span class="weapon-stat-label">특수 효과</span>
+              <span id="weapon-perk-text" class="weapon-perk-value">빠른 연타 속도 (0.30초 쿨다운)</span>
             </div>
 
             <!-- 현재 무기 강화 단계 및 적용 공격력 -->
@@ -211,6 +224,11 @@
               <span class="game-over-stat-label">이번 런 획득 수당</span>
               <span id="game-over-stat-reward" class="game-over-stat-value text-accent">+₩0</span>
             </div>
+            <!-- Phase 15: 이번 런 획득 아이템 목록 표시 -->
+            <div class="game-over-stat-item game-over-stat-item-full">
+              <span class="game-over-stat-label">런 중 획득 아이템</span>
+              <span id="game-over-stat-items" class="game-over-stat-value">없음</span>
+            </div>
             <div class="game-over-stat-item game-over-stat-item-full">
               <span class="game-over-stat-label">총 보유 야근 수당</span>
               <span id="game-over-stat-total" class="game-over-stat-value">₩0</span>
@@ -252,6 +270,11 @@
             <div class="victory-stat-item victory-stat-item-full">
               <span class="victory-stat-label">장비 및 강화 상태</span>
               <span id="victory-stat-equipment" class="victory-stat-value">스테이플러 / 권총</span>
+            </div>
+            <!-- Phase 15: 이번 런 획득 아이템 목록 표시 -->
+            <div class="victory-stat-item victory-stat-item-full">
+              <span class="victory-stat-label">런 중 획득 아이템</span>
+              <span id="victory-stat-items" class="victory-stat-value">없음</span>
             </div>
             <div class="victory-stat-item victory-stat-item-full">
               <span class="victory-stat-label">총 보유 야근 수당</span>

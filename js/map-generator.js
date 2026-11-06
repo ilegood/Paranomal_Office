@@ -1310,7 +1310,9 @@
         const id =
           configId === 'medkit'
             ? `item-medkit-${medkitSeq++}`
-            : `item-upgrade-${upgradeSeq++}`;
+            : configId === 'weapon_upgrade_module'
+              ? `item-upgrade-${upgradeSeq++}`
+              : `item-${configId}-${medkitSeq++}`;
 
         itemSpawns.push({
           id,
@@ -1323,10 +1325,13 @@
         });
       };
 
-      // 기본 필수 보급 아이템 2종(응급 구급상자 + 무기 강화 모듈)을 1차 보급 방에 배치
+      // 기본 필수 보급 아이템 2종(응급 구급상자 + 무기 강화 모듈) 및 랜덤 대체 무기 1종 배치
       if (primarySupply) {
-        addItemInRoom(primarySupply, 'medkit', -78);
-        addItemInRoom(primarySupply, 'weapon_upgrade_module', 78);
+        addItemInRoom(primarySupply, 'medkit', -90);
+        addItemInRoom(primarySupply, 'weapon_upgrade_module', 90);
+        const weaponPool = ['weapon_hammer', 'weapon_stun_baton', 'weapon_shotgun', 'weapon_doc_launcher'];
+        const randomWeapon = weaponPool[rng.int(0, weaponPool.length - 1)];
+        addItemInRoom(primarySupply, randomWeapon, 0);
       }
 
       // 2번째 보급 방이 존재하면 추가 보급 아이템 배치

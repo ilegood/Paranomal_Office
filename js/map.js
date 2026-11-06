@@ -488,6 +488,39 @@
         x: 1305,
         y: 310,
         initialPhase: 1.4
+      },
+      // Phase 16: 보급 방 내 신규 근접/원거리 대체 무기 배치
+      {
+        id: 'item-weapon-hammer',
+        roomId: 'room-supply',
+        configId: 'weapon_hammer',
+        x: 1050,
+        y: 390,
+        initialPhase: 0.5
+      },
+      {
+        id: 'item-weapon-stun-baton',
+        roomId: 'room-supply',
+        configId: 'weapon_stun_baton',
+        x: 1150,
+        y: 390,
+        initialPhase: 1.0
+      },
+      {
+        id: 'item-weapon-shotgun',
+        roomId: 'room-supply',
+        configId: 'weapon_shotgun',
+        x: 1250,
+        y: 390,
+        initialPhase: 1.5
+      },
+      {
+        id: 'item-weapon-doc-launcher',
+        roomId: 'room-supply',
+        configId: 'weapon_doc_launcher',
+        x: 1350,
+        y: 390,
+        initialPhase: 2.0
       }
     ]),
 

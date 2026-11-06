@@ -290,6 +290,14 @@
     }
 
     /**
+     * Phase 16: 보스는 전기 충격봉 등의 모든 경직(Stun) 상태이상에 완전 면역
+     * @returns {boolean} 면역 처리 (항상 false)
+     */
+    applyStun(_duration) {
+      return false;
+    }
+
+    /**
      * 플레이어 공격(근접/원거리) 피격 처리
      * @param {number} amount 피해량
      * @param {number} hitDirX 피격 방향
@@ -336,6 +344,11 @@
       // 진행 중이던 공격 즉시 취소
       this.currentAttack.phase = 'none';
       this.currentAttack.pattern = null;
+
+      // Phase 15: 보스 처치 시 콜백(아이템 100% 드롭 등) 호출
+      if (typeof this.onDeath === 'function') {
+        this.onDeath(this);
+      }
     }
 
     /**
@@ -670,7 +683,12 @@
      * 플레이어에게 피해를 안전하게 전달 (대시 무적 판정 완벽 연동)
      */
     _applyDamageToPlayer(player, damage, playerDamageSystem, sourceTag, hitDirX) {
-      if (playerDamageSystem && typeof playerDamageSystem.dealDamage === 'function') {
+      if (playerDamageSystem && typeof playerDamageSystem.applyDamage === 'function') {
+        playerDamageSystem.applyDamage(player, damage, {
+          source: sourceTag,
+          dirX: hitDirX
+        });
+      } else if (playerDamageSystem && typeof playerDamageSystem.dealDamage === 'function') {
         playerDamageSystem.dealDamage(player, damage, {
           source: sourceTag,
           dirX: hitDirX,

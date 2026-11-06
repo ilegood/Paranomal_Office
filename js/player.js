@@ -102,6 +102,109 @@
 
       // 피격 시 짧은 붉은 점멸 피드백 타이머
       this.hurtFlashTimer = 0;
+
+      // Phase 15: 런 중 아이템 획득 및 강화 버프 상태 (해당 런 동안 유지, 런 종료/사망 시 초기화)
+      this.baseDashCooldownBeforeBuffs = this.dash.cooldownTotal;
+      this.runBuffs = {
+        attackBonusPercent: 0, // 기본 공격력 기준 +15%p씩 합연산 누적
+        dashCooldownMultiplier: 1.0, // 0.85x씩 곱연산 적용
+        damageTakenMultiplier: 1.0, // 0.85x씩 곱연산 점감 (최소 1 피해 보장)
+        itemsCollected: [], // 이번 런에서 획득한 모든 아이템 목록
+        counts: {
+          emergency_kit: 0,
+          overtime_pay: 0,
+          overtime_sneakers: 0,
+          bulletproof_folder: 0
+        }
+      };
+    }
+
+    /**
+     * Phase 15: 런 중 아이템 획득 시 버프 적용 (중첩 규칙 준수)
+     * - 공격력: 기본 공격력 기준 +15%p 합연산 누적
+     * - 대시 쿨다운: 곱연산(0.85x) 적용
+     * - 방어력: 곱연산 점감(0.85x) 적용
+     */
+    addRunBuff(item, combat = null, _game = null) {
+      if (!this.runBuffs) {
+        this.runBuffs = {
+          attackBonusPercent: 0,
+          dashCooldownMultiplier: 1.0,
+          damageTakenMultiplier: 1.0,
+          itemsCollected: [],
+          counts: {
+            emergency_kit: 0,
+            overtime_pay: 0,
+            overtime_sneakers: 0,
+            bulletproof_folder: 0
+          }
+        };
+      }
+
+      const typeId = item.typeId || (item.effectParams && item.effectParams.buffKey) || 'unknown';
+      this.runBuffs.itemsCollected.push({
+        id: item.id,
+        typeId,
+        name: item.name,
+        category: item.category
+      });
+      this.runBuffs.counts[typeId] = (this.runBuffs.counts[typeId] || 0) + 1;
+
+      const stat = item.effectParams ? item.effectParams.stat : null;
+      const percent = item.effectParams ? item.effectParams.percent : 0;
+
+      if (stat === 'attackPower') {
+        // 합연산 누적 (+15%p씩)
+        this.runBuffs.attackBonusPercent += percent;
+        if (combat) {
+          combat.runAttackBonusPercent = this.runBuffs.attackBonusPercent;
+        }
+      } else if (stat === 'dashCooldown') {
+        // 곱연산 적용 (0.85x)
+        const factor = 1 - percent / 100;
+        this.runBuffs.dashCooldownMultiplier *= factor;
+
+        const baseCd = this.baseDashCooldownBeforeBuffs || this.dash.cooldownTotal;
+        this.baseDashCooldownBeforeBuffs = baseCd;
+        this.dash.cooldownTotal = Math.max(
+          0.3,
+          Number((baseCd * this.runBuffs.dashCooldownMultiplier).toFixed(2))
+        );
+      } else if (stat === 'damageReduction') {
+        // 곱연산 점감 (0.85x)
+        const factor = 1 - percent / 100;
+        this.runBuffs.damageTakenMultiplier *= factor;
+      }
+
+      return {
+        typeId,
+        name: item.name,
+        runBuffs: this.runBuffs
+      };
+    }
+
+    /**
+     * Phase 15: 런 종료 또는 새 런 시작 시 런 버프 완전 초기화
+     */
+    resetRunBuffs(combat = null) {
+      this.runBuffs = {
+        attackBonusPercent: 0,
+        dashCooldownMultiplier: 1.0,
+        damageTakenMultiplier: 1.0,
+        itemsCollected: [],
+        counts: {
+          emergency_kit: 0,
+          overtime_pay: 0,
+          overtime_sneakers: 0,
+          bulletproof_folder: 0
+        }
+      };
+      if (this.baseDashCooldownBeforeBuffs) {
+        this.dash.cooldownTotal = this.baseDashCooldownBeforeBuffs;
+      }
+      if (combat) {
+        combat.runAttackBonusPercent = 0;
+      }
     }
 
     get x() {
@@ -453,8 +556,15 @@
         };
       }
 
+      // Phase 15: 방탄 서류철 받는 피해 15% 감소 적용 (곱연산 점감, 최소 피해 1 보장)
+      const dmgMult =
+        player.runBuffs && typeof player.runBuffs.damageTakenMultiplier === 'number'
+          ? player.runBuffs.damageTakenMultiplier
+          : 1.0;
+      const effectiveDamage = Math.max(1, Math.round(amount * dmgMult));
+
       const prevHp = player.hp;
-      player.setHp(player.hp - amount);
+      player.setHp(player.hp - effectiveDamage);
       const actualDamage = prevHp - player.hp;
       player.hurtFlashTimer = PLAYER_DAMAGE_CONFIG.hurtFlashDuration;
 

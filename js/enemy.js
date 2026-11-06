@@ -359,6 +359,28 @@
       this.lastHitDirX = 0;
       this.deathTimer = 0;
       this.deathDuration = config.deathDuration ?? ENEMY_CONFIG.deathDuration;
+
+      // Phase 16: 전기 충격봉 피격 시 경직(Stun) 상태 타이머
+      this.stunTimer = 0;
+    }
+
+    /**
+     * Phase 16: 전기 충격봉 피격 시 경직(Stun) 상태 부여
+     * @param {number} duration 경직 지속 시간(초)
+     */
+    applyStun(duration) {
+      if (!this.alive || this.state === ENEMY_STATES.DEAD || duration <= 0) {
+        return false;
+      }
+      this.stunTimer = Math.max(this.stunTimer, duration);
+      this.velocity.x = 0;
+      this.velocity.y = 0;
+      this.isMoving = false;
+      if (this.state === ENEMY_STATES.ATTACK) {
+        this.cancelAttack();
+        this.state = ENEMY_STATES.CHASE;
+      }
+      return true;
     }
 
     /**
@@ -449,6 +471,8 @@
       this.enemyProjectiles = [];
       this.defeatedEnemyIds = new Set();
       this.defeatedRewards = new Map();
+      // Phase 15: 적 처치 시 런 아이템 드롭 콜백
+      this.onEnemyDefeated = null;
     }
 
     getDefeatedCount() {
@@ -590,12 +614,24 @@
           if (!this.defeatedEnemyIds.has(enemy.id)) {
             this.defeatedEnemyIds.add(enemy.id);
             this.defeatedRewards.set(enemy.id, enemy.reward || 10);
+            if (typeof this.onEnemyDefeated === 'function') {
+              this.onEnemyDefeated(enemy);
+            }
           }
           enemy.deathTimer += dt;
           if (enemy.deathTimer >= enemy.deathDuration) {
             enemy.shouldRemove = true;
             this.enemies.splice(i, 1);
           }
+          continue;
+        }
+
+        // Phase 16: 경직(Stun) 상태 처리 (스턴 중에는 AI 행동·이동 전이를 멈추고 제자리에 정지)
+        if (enemy.stunTimer > 0) {
+          enemy.stunTimer = Math.max(0, enemy.stunTimer - dt);
+          enemy.velocity.x = 0;
+          enemy.velocity.y = 0;
+          enemy.isMoving = false;
           continue;
         }
 

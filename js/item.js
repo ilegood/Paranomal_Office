@@ -8,36 +8,222 @@
    */
   const ITEM_TYPES = Object.freeze({
     HEAL: 'heal',
-    WEAPON_UPGRADE: 'weapon_upgrade'
+    WEAPON_UPGRADE: 'weapon_upgrade',
+    RUN_BUFF: 'run_buff',
+    WEAPON: 'weapon'
   });
 
   /**
-   * 프로토타입 고정 아이템 설정값 (플레이어 데이터와 완전히 분리 관리, 추후 신규 아이템 추가 용이)
+   * Phase 15: 아이템 데이터 구조 (아이템 정보 별도 데이터 구조로 관리)
+   * 고유 ID, 아이템 이름, 설명, 아이템 종류, 적용 효과, 드롭 가중치, 획득 시 표시할 피드백
+   * - medkit, weapon_upgrade_module: 보급 방 배치 아이템
+   * - emergency_kit, overtime_pay, overtime_sneakers, bulletproof_folder: 적 처치 런 중 드롭 아이템
    */
   const ITEM_CONFIGS = Object.freeze({
     medkit: Object.freeze({
       typeId: 'medkit',
       category: ITEM_TYPES.HEAL,
       name: '응급 구급상자',
+      description: '즉시 체력을 30 회복합니다. (최대 체력 초과 불가)',
       effectType: 'heal',
+      dropWeight: 0,
       effectParams: Object.freeze({
         healAmount: 30
       }),
       interactionRange: 58,
-      radius: 16
+      radius: 16,
+      feedbackText: '+30 HP 회복',
+      feedbackDetail: '체력 +30 즉시 회복'
     }),
     weapon_upgrade_module: Object.freeze({
       typeId: 'weapon_upgrade_module',
       category: ITEM_TYPES.WEAPON_UPGRADE,
       name: '무기 강화 모듈',
+      description: '런 동안 무기 데미지를 25% 강화합니다. (최대 3단계)',
       effectType: 'weapon_upgrade',
+      dropWeight: 0,
       effectParams: Object.freeze({
         upgradeSteps: 1,
         bonusPercentPerStep: 25,
         maxUpgradeLevel: 3
       }),
       interactionRange: 58,
-      radius: 16
+      radius: 16,
+      feedbackText: '무기 강화!',
+      feedbackDetail: '무기 데미지 +25% 영구 강화'
+    }),
+    // Phase 15 신규 런 드롭 아이템 4종
+    emergency_kit: Object.freeze({
+      typeId: 'emergency_kit',
+      category: ITEM_TYPES.HEAL,
+      name: '응급 키트',
+      description: '즉시 체력을 30 회복합니다. 최대 체력을 초과하지 않습니다.',
+      effectType: 'heal',
+      dropWeight: 35, // 드롭 가중치: 35%
+      effectParams: Object.freeze({
+        healAmount: 30
+      }),
+      interactionRange: 58,
+      radius: 16,
+      feedbackText: '+30 HP 회복',
+      feedbackDetail: '체력 +30 즉시 회복 (풀 HP 시 획득 차단)'
+    }),
+    overtime_pay: Object.freeze({
+      typeId: 'overtime_pay',
+      category: ITEM_TYPES.RUN_BUFF,
+      name: '야근 수당',
+      description: '런 종료 시까지 공격력이 15% 증가합니다. (기본 공격력 기준 합연산 누적)',
+      effectType: 'run_buff',
+      dropWeight: 25, // 드롭 가중치: 25%
+      effectParams: Object.freeze({
+        buffKey: 'attack',
+        stat: 'attackPower',
+        percent: 15,
+        stackType: 'additive'
+      }),
+      interactionRange: 58,
+      radius: 16,
+      feedbackText: '공격력 +15%!',
+      feedbackDetail: '런 중 근접 및 원거리 공격력 15% 증가 (합연산 중첩)'
+    }),
+    overtime_sneakers: Object.freeze({
+      typeId: 'overtime_sneakers',
+      category: ITEM_TYPES.RUN_BUFF,
+      name: '잔업용 운동화',
+      description: '런 종료 시까지 대시 쿨다운이 15% 감소합니다. (곱연산 적용)',
+      effectType: 'run_buff',
+      dropWeight: 20, // 드롭 가중치: 20%
+      effectParams: Object.freeze({
+        buffKey: 'dashCooldown',
+        stat: 'dashCooldown',
+        percent: 15,
+        stackType: 'multiplicative'
+      }),
+      interactionRange: 58,
+      radius: 16,
+      feedbackText: '대시 쿨다운 -15%!',
+      feedbackDetail: '런 중 대시 쿨다운 15% 감소 (곱연산 점감 적용)'
+    }),
+    bulletproof_folder: Object.freeze({
+      typeId: 'bulletproof_folder',
+      category: ITEM_TYPES.RUN_BUFF,
+      name: '방탄 서류철',
+      description: '런 종료 시까지 받는 피해가 15% 감소합니다. (보스 포함 전 피격 적용, 최소 피해 1)',
+      effectType: 'run_buff',
+      dropWeight: 20, // 드롭 가중치: 20%
+      effectParams: Object.freeze({
+        buffKey: 'defense',
+        stat: 'damageReduction',
+        percent: 15,
+        stackType: 'multiplicative'
+      }),
+      interactionRange: 58,
+      radius: 16,
+      feedbackText: '받는 피해 -15%!',
+      feedbackDetail: '런 중 받는 피해 15% 감소 (곱연산 점감, 최소 1 피해)'
+    }),
+    // Phase 16: 신규 무기 아이템 6종 (근접 3종, 원거리 3종)
+    weapon_cutter: Object.freeze({
+      typeId: 'weapon_cutter',
+      category: ITEM_TYPES.WEAPON,
+      name: '사무용 커터',
+      description: '예리하게 갈아낸 대형 커터칼. 빠른 공속으로 연속 타격을 가합니다.',
+      effectType: 'weapon_equip',
+      dropWeight: 0,
+      weaponId: 'cutter',
+      effectParams: Object.freeze({
+        weaponId: 'cutter',
+        slot: 1
+      }),
+      interactionRange: 58,
+      radius: 16,
+      feedbackText: '사무용 커터 장착!',
+      feedbackDetail: '1번 슬롯(근접)에 장착되었습니다.'
+    }),
+    weapon_hammer: Object.freeze({
+      typeId: 'weapon_hammer',
+      category: ITEM_TYPES.WEAPON,
+      name: '대형 망치',
+      description: '철거 및 시설 보수용 육중한 오함마. 묵직하고 느리지만 광범위의 적을 분쇄합니다.',
+      effectType: 'weapon_equip',
+      dropWeight: 0,
+      weaponId: 'hammer',
+      effectParams: Object.freeze({
+        weaponId: 'hammer',
+        slot: 1
+      }),
+      interactionRange: 58,
+      radius: 16,
+      feedbackText: '대형 망치 장착!',
+      feedbackDetail: '1번 슬롯(근접)에 장착되었습니다. (높은 공격력 55, 넓은 범위)'
+    }),
+    weapon_stun_baton: Object.freeze({
+      typeId: 'weapon_stun_baton',
+      category: ITEM_TYPES.WEAPON,
+      name: '전기 충격봉',
+      description: '방범 순찰용 고압 전기 충격기. 타격 시 일반 적을 0.6초간 마비 경직시킵니다. (보스 면역)',
+      effectType: 'weapon_equip',
+      dropWeight: 0,
+      weaponId: 'stun_baton',
+      effectParams: Object.freeze({
+        weaponId: 'stun_baton',
+        slot: 1
+      }),
+      interactionRange: 58,
+      radius: 16,
+      feedbackText: '전기 충격봉 장착!',
+      feedbackDetail: '1번 슬롯(근접)에 장착되었습니다. (0.6초 경직 효과, 보스 면역)'
+    }),
+    weapon_pistol: Object.freeze({
+      typeId: 'weapon_pistol',
+      category: ITEM_TYPES.WEAPON,
+      name: '사무용 권총',
+      description: '야간 긴급 호신용 리볼버 권총. 안정적인 사거리와 탄속으로 단일 적을 저격합니다.',
+      effectType: 'weapon_equip',
+      dropWeight: 0,
+      weaponId: 'pistol',
+      effectParams: Object.freeze({
+        weaponId: 'pistol',
+        slot: 2
+      }),
+      interactionRange: 58,
+      radius: 16,
+      feedbackText: '사무용 권총 장착!',
+      feedbackDetail: '2번 슬롯(원거리)에 장착되었습니다.'
+    }),
+    weapon_shotgun: Object.freeze({
+      typeId: 'weapon_shotgun',
+      category: ITEM_TYPES.WEAPON,
+      name: '산탄총',
+      description: '5발의 산탄 펠릿을 부채꼴로 일제 발사합니다. 초근접 시 치명적인 폭딜을 가합니다.',
+      effectType: 'weapon_equip',
+      dropWeight: 0,
+      weaponId: 'shotgun',
+      effectParams: Object.freeze({
+        weaponId: 'shotgun',
+        slot: 2
+      }),
+      interactionRange: 58,
+      radius: 16,
+      feedbackText: '산탄총 장착!',
+      feedbackDetail: '2번 슬롯(원거리)에 장착되었습니다. (5발 산탄 확산, 초근접 폭딜)'
+    }),
+    weapon_doc_launcher: Object.freeze({
+      typeId: 'weapon_doc_launcher',
+      category: ITEM_TYPES.WEAPON,
+      name: '서류 발사기',
+      description: '압축 공기로 날카로운 결재 서류를 난사하는 기관총형 발사기. 다수의 적을 제압합니다.',
+      effectType: 'weapon_equip',
+      dropWeight: 0,
+      weaponId: 'doc_launcher',
+      effectParams: Object.freeze({
+        weaponId: 'doc_launcher',
+        slot: 2
+      }),
+      interactionRange: 58,
+      radius: 16,
+      feedbackText: '서류 발사기 장착!',
+      feedbackDetail: '2번 슬롯(원거리)에 장착되었습니다. (0.10s 초고속 연사 난사)'
     })
   });
 
@@ -208,6 +394,127 @@
           };
         }
       });
+
+      // 3. Phase 15: 런 버프 아이템 효과 핸들러 (야근 수당, 잔업용 운동화, 방탄 서류철)
+      this.registerEffect('run_buff', {
+        canApply(item, context) {
+          const { player } = context;
+          if (!player || player.isDead) {
+            return { allowed: false, code: 'PLAYER_DEAD', reason: '획득할 수 없는 상태입니다.' };
+          }
+          return { allowed: true, code: null, reason: null };
+        },
+
+        apply(item, context) {
+          const { player, combat, game } = context;
+          let buffResult = null;
+          if (player && typeof player.addRunBuff === 'function') {
+            buffResult = player.addRunBuff(item, combat, game);
+          }
+
+          let bannerDetail = item.effectParams.feedbackDetail || `${item.name} 효과 적용`;
+          let popupText = item.effectParams.feedbackText || `${item.name} 획득!`;
+          let popupColor = '#f59e0b';
+
+          if (item.typeId === 'overtime_pay') {
+            popupColor = '#f59e0b'; // 황금색
+            const curAtkPct = player.runBuffs ? player.runBuffs.attackBonusPercent : 15;
+            bannerDetail = `공격력 +15% 증가 (런 누적 +${curAtkPct}%)`;
+            popupText = '공격력 +15%!';
+          } else if (item.typeId === 'overtime_sneakers') {
+            popupColor = '#38bdf8'; // 시안 하늘색
+            const curCd = player.dash ? player.dash.cooldownTotal.toFixed(2) : '1.0';
+            bannerDetail = `대시 쿨다운 -15% 감소 (현재 ${curCd}초)`;
+            popupText = '대시 쿨다운 -15%!';
+          } else if (item.typeId === 'bulletproof_folder') {
+            popupColor = '#c084fc'; // 보라색
+            const totalRedPct = player.runBuffs
+              ? Math.round((1 - player.runBuffs.damageTakenMultiplier) * 100)
+              : 15;
+            bannerDetail = `받는 피해 15% 감소 (현재 총 ${totalRedPct}% 감소, 최소 1)`;
+            popupText = '받는 피해 -15%!';
+          }
+
+          return {
+            applied: true,
+            effectType: 'run_buff',
+            itemName: item.name,
+            buffKey: item.effectParams.buffKey,
+            stat: item.effectParams.stat,
+            percent: item.effectParams.percent,
+            bannerTitle: `${item.name} 획득`,
+            bannerDetail,
+            popupText,
+            popupColor,
+            buffResult
+          };
+        },
+
+        describePrompt(item, _context) {
+          return {
+            canPickup: true,
+            keyLabel: 'E',
+            title: `${item.name} 획득`,
+            detail: item.effectParams.feedbackDetail || item.description
+          };
+        }
+      });
+
+      // 4. Phase 16: 무기 교체 장착 핸들러 (사무용 커터, 대형 망치, 전기 충격봉, 권총, 산탄총, 서류 발사기)
+      this.registerEffect('weapon_equip', {
+        canApply(item, context) {
+          const { player, combat } = context;
+          if (!player || player.isDead) {
+            return { allowed: false, code: 'PLAYER_DEAD', reason: '획득할 수 없는 상태입니다.' };
+          }
+          if (!combat) {
+            return { allowed: false, code: 'NO_COMBAT', reason: '전투 시스템을 찾을 수 없습니다.' };
+          }
+          return { allowed: true, code: null, reason: null };
+        },
+
+        apply(item, context) {
+          const { combat } = context;
+          const weaponId = item.effectParams?.weaponId || item.weaponId;
+          const result = combat.equipWeapon(weaponId);
+          if (!result) {
+            return { applied: false, reason: '무기 장착 실패' };
+          }
+
+          const { slot, weapon } = result;
+          combat.switchWeapon(slot);
+
+          const slotLabel = slot === 1 ? '1번 슬롯(근접)' : '2번 슬롯(원거리)';
+          const bannerTitle = `${weapon.config.name} 장착!`;
+          const bannerDetail = `${slotLabel}에 장착되었습니다. (${weapon.config.attackModeText})`;
+          const popupText = `${weapon.config.name} 획득!`;
+          const popupColor = slot === 1 ? '#fbbf24' : '#38bdf8';
+
+          return {
+            applied: true,
+            effectType: 'weapon_equip',
+            weaponId,
+            slot,
+            bannerTitle,
+            bannerDetail,
+            popupText,
+            popupColor,
+            equipResult: result
+          };
+        },
+
+        describePrompt(item, _context) {
+          const weaponId = item.effectParams?.weaponId || item.weaponId;
+          const cfg = PO.WEAPON_CONFIGS?.[weaponId];
+          const slotLabel = cfg ? (cfg.slot === 1 ? '1번(근접)' : '2번(원거리)') : '';
+          return {
+            canPickup: true,
+            keyLabel: 'E',
+            title: `${item.name} 장착`,
+            detail: cfg ? `[${slotLabel}] ${cfg.name} 교체 장착` : item.description
+          };
+        }
+      });
     }
 
     canApply(item, context) {
@@ -248,6 +555,7 @@
       this.effectApplier = effectApplier;
       this.items = initialItems.map((cfg) => (cfg instanceof WorldItem ? cfg : new WorldItem(cfg)));
       this.focusedItem = null;
+      this.nextDropId = 0;
 
       // 상단 중앙 HUD 알림 배너 상태 (회복량 / 강화 단계 변화 / 획득 불가 사유 표시)
       this.activeBanner = null;
@@ -255,6 +563,77 @@
       // 캔버스 플로팅 텍스트 및 획득 링 이펙트
       this.popups = [];
       this.pickupRings = [];
+    }
+
+    /**
+     * Phase 15: 드롭 가중치 기반 무작위 아이템 ID 선택
+     * 응급 키트 (35), 야근 수당 (25), 잔업용 운동화 (20), 방탄 서류철 (20)
+     */
+    static pickRandomDropConfig(rng = null) {
+      const pool = [
+        { configId: 'emergency_kit', weight: 35 },
+        { configId: 'overtime_pay', weight: 25 },
+        { configId: 'overtime_sneakers', weight: 20 },
+        { configId: 'bulletproof_folder', weight: 20 }
+      ];
+      const totalWeight = pool.reduce((sum, item) => sum + item.weight, 0);
+      const roll =
+        rng && typeof rng.float === 'function'
+          ? rng.float(0, totalWeight)
+          : Math.random() * totalWeight;
+
+      let acc = 0;
+      for (let i = 0; i < pool.length; i++) {
+        acc += pool[i].weight;
+        if (roll < acc) {
+          return pool[i].configId;
+        }
+      }
+      return pool[0].configId;
+    }
+
+    /**
+     * Phase 15: 적 처치 시 확률 드롭 판정 및 아이템 생성
+     * - 일반 적: 20% 확률
+     * - 엘리트 적 (manager): 60% 확률
+     * - 보스 (boss): 100% 확정 드롭
+     */
+    rollEnemyDrop(enemy, x, y, rng = null) {
+      if (!enemy) {
+        return null;
+      }
+
+      const isBoss = Boolean(enemy.isBoss || enemy.type === 'boss' || enemy.enemyType === 'boss');
+      const isElite = Boolean(enemy.isElite || enemy.type === 'manager' || enemy.enemyType === 'manager');
+
+      const dropChance = isBoss ? 1.0 : isElite ? 0.60 : 0.20;
+      const roll =
+        rng && typeof rng.float === 'function'
+          ? rng.float(0, 1.0)
+          : Math.random();
+
+      if (roll <= dropChance) {
+        const configId = ItemSystem.pickRandomDropConfig(rng);
+        return this.spawnItem(configId, x, y);
+      }
+      return null;
+    }
+
+    /**
+     * Phase 15: 특정 위치에 신규 월드 아이템 즉시 생성 및 등록
+     */
+    spawnItem(configId, x, y, customId = null) {
+      this.nextDropId = (this.nextDropId || 0) + 1;
+      const id = customId || `drop-item-${this.nextDropId}-${Date.now().toString(36)}`;
+      const worldItem = new WorldItem({
+        id,
+        configId,
+        x,
+        y,
+        initialPhase: Math.random() * Math.PI * 2
+      });
+      this.items.push(worldItem);
+      return worldItem;
     }
 
     /**
@@ -352,7 +731,7 @@
       }
 
       // 효과 적용 가능 여부 검사 (체력 최대치, 강화 최대치 등)
-      const check = this.effectApplier.canApply(targetItem, { player, combat });
+      const check = this.effectApplier.canApply(targetItem, { player, combat, game: context.game });
       if (!check.allowed) {
         this.activeBanner = {
           kind: 'blocked',
@@ -389,7 +768,7 @@
       this.focusedItem = this._findInteractableItem(player, officeMap);
 
       // 2. 분리된 효과 적용 모듈을 통해 실제 효과 반영
-      const effectResult = this.effectApplier.apply(targetItem, { player, combat });
+      const effectResult = this.effectApplier.apply(targetItem, { player, combat, game: context.game });
 
       // 3. UI 배너 및 캔버스 피드백 생성
       this.activeBanner = {

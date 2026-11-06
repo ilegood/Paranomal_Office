@@ -340,6 +340,21 @@
             ctx.rect(-itemHalf, -itemHalf, itemHalf * 2, itemHalf * 2);
             ctx.fill();
             ctx.stroke();
+          } else if (item.category === 'run_buff') {
+            // Phase 15: 런 버프 아이템 (수당/운동화/서류철) 마커
+            ctx.rotate(Math.PI * 0.25);
+            ctx.fillStyle =
+              item.typeId === 'overtime_pay'
+                ? '#f59e0b'
+                : item.typeId === 'overtime_sneakers'
+                  ? '#38bdf8'
+                  : '#c084fc';
+            ctx.strokeStyle = '#090d16';
+            ctx.lineWidth = 1.3;
+            ctx.beginPath();
+            ctx.rect(-itemHalf, -itemHalf, itemHalf * 2, itemHalf * 2);
+            ctx.fill();
+            ctx.stroke();
           } else {
             // 무기 강화 모듈: 황금 다이아몬드 마커
             ctx.rotate(Math.PI * 0.25);

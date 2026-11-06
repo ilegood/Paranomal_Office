@@ -395,6 +395,20 @@ body {
   color: #cbd5e1;
 }
 
+.weapon-perk-row {
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.weapon-perk-value {
+  color: #fde047;
+  font-size: clamp(10px, 0.82vw, 11px);
+  text-align: right;
+  word-break: keep-all;
+  line-height: 1.3;
+  max-width: 160px;
+}
+
 .weapon-ammo-value {
   color: #38bdf8;
   font-variant-numeric: tabular-nums;
@@ -1918,6 +1932,94 @@ body {
   background: #334155;
   color: #ffffff;
 }
+
+/* ==========================================================================
+   Phase 15: 런 중 적용 버프 칩 & 획득 아이템 목록 결과창 스타일
+   ========================================================================== */
+
+/* HUD 상단 런 버프 칩 컨테이너 */
+.hud-run-buffs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 4px 6px;
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px dashed rgba(148, 163, 184, 0.35);
+  border-radius: 8px;
+}
+
+.buff-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 800;
+  border-radius: 6px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  letter-spacing: -0.01em;
+  transition: all 0.15s ease;
+}
+
+/* 공격력 강화: 야근 수당 */
+.buff-chip.is-atk {
+  background: rgba(245, 158, 11, 0.18);
+  border: 1px solid #f59e0b;
+  color: #fbbf24;
+  text-shadow: 0 0 6px rgba(245, 158, 11, 0.4);
+}
+
+/* 대시 쿨다운 감소: 잔업용 운동화 */
+.buff-chip.is-dash {
+  background: rgba(56, 189, 248, 0.18);
+  border: 1px solid #38bdf8;
+  color: #7dd3fc;
+  text-shadow: 0 0 6px rgba(56, 189, 248, 0.4);
+}
+
+/* 받는 피해 감소: 방탄 서류철 */
+.buff-chip.is-def {
+  background: rgba(168, 85, 247, 0.18);
+  border: 1px solid #a855f7;
+  color: #d8b4fe;
+  text-shadow: 0 0 6px rgba(168, 85, 247, 0.4);
+}
+
+/* 결과 오버레이 내 아이템 태그 */
+.run-item-tag {
+  display: inline-block;
+  padding: 2px 7px;
+  margin: 2px 3px;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 5px;
+  background: rgba(30, 41, 59, 0.9);
+  border: 1px solid #475569;
+  color: #e2e8f0;
+}
+
+.run-item-tag.is-atk {
+  border-color: #f59e0b;
+  color: #fde047;
+}
+
+.run-item-tag.is-dash {
+  border-color: #38bdf8;
+  color: #7dd3fc;
+}
+
+.run-item-tag.is-def {
+  border-color: #a855f7;
+  color: #d8b4fe;
+}
+
+.run-item-tag.is-heal {
+  border-color: #10b981;
+  color: #6ee7b7;
+}
+
 
 
 
